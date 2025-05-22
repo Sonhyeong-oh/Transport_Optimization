@@ -19,6 +19,12 @@
 
    (GAcluster_model과 GAcluster_utils를 import 하여 GAcluster 실행)
 
-   ![terminal result](https://github.com/user-attachments/assets/1bb3e4ed-65a3-48aa-b722-5693ab6e2b22) ![클러스터링 시각화](https://github.com/user-attachments/assets/f9dd5c50-ee87-4ab8-b8c5-301b0d0bd96b)
+   * 텍스트 출력 결과
+   ![terminal result](https://github.com/user-attachments/assets/1bb3e4ed-65a3-48aa-b722-5693ab6e2b22)
+
+   ![image](https://github.com/user-attachments/assets/1ac55459-8d45-4ad0-8444-a65bb89635b5)
+
+   * 시각화
+   ![클러스터링 시각화](https://github.com/user-attachments/assets/f9dd5c50-ee87-4ab8-b8c5-301b0d0bd96b)
 
 
