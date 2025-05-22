@@ -39,7 +39,7 @@ def main(args):
         print(f"Debug Mode: {debug_mode}")
     else:
         # 한글로 출력
-        print("==== 강원도 중복 허용 클러스터링 - 유전 알고리즘 ====")
+        print("==== 중복 허용 클러스터링 - 유전 알고리즘 ====")
         print(f"클러스터 수: {args.num_clusters}")
         print(f"세대 수: {args.generations}")
         print(f"인구 크기: {args.population_size}")
@@ -179,6 +179,7 @@ def main(args):
         analysis = None
 
     # 결과 저장 디렉토리 생성
+    results_dir = None  # 초기화 추가
     if args.save_results:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         results_dir = f"results_{timestamp}"
@@ -188,30 +189,17 @@ def main(args):
         # 적합도 그래프 저장
         fitness_fig = plot_fitness_history(fitness_history)
         fitness_fig.savefig(f"{results_dir}/fitness_history.png")
-        
-        # 클러스터 시각화 및 저장 (각 군집별별)
-        for item_idx in range(fixed_net_demand.shape[1]):
-            try:
-                cluster_fig = visualize_clusters_by_cluster(
-                    locations, 
-                    dist_matrix, 
-                    clusters, 
-                    fixed_net_demand, 
-                    items=item_idx,
-                    min_nodes_per_cluster=args.min_nodes_per_cluster,
-                    balance_tolerance=args.balance_tolerance
-                )
-                cluster_fig.savefig(f"{results_dir}/clusters_time_{item_idx+1}.png")
-            except Exception as e:
-                print(f"군집 {item_idx+1} 시각화 중 오류: {str(e)}")
-        
-        
+        plt.close(fitness_fig)  # 메모리 절약을 위해 닫기
 
         # 텍스트 보고서 저장
         with open(f"{results_dir}/clustering_report.txt", "w", encoding="utf-8") as f:
-            # ... 기존 코드 ...
+            # 기본 정보
+            f.write("==== 중복 허용 클러스터링 - 유전 알고리즘 결과 ====\n")
+            f.write(f"클러스터 수: {args.num_clusters}\n")
+            f.write(f"최종 적합도: {best_solution.fitness:.4f}\n")
+            f.write(f"실제 클러스터 수: {sum(1 for c in clusters if c)}\n\n")
 
-            # 클러스터 구성
+            # 클러스터 구성 (수요/공급 분할 적용)
             f.write("[클러스터 구성 (수요/공급 분할 적용)]\n")
             for cluster_idx, cluster in enumerate(clusters):
                 if not cluster:
@@ -222,7 +210,7 @@ def main(args):
                     node_name = locations[node_idx]
 
                     # 분할 비율이 제공된 경우, 해당 비율로 수요/공급 분할
-                    if (node_idx, cluster_idx) in split_ratios:
+                    if split_ratios and (node_idx, cluster_idx) in split_ratios:
                         ratio = split_ratios[(node_idx, cluster_idx)]
                         split_demand_values = [fixed_net_demand[node_idx, t].item() * ratio for t in range(fixed_net_demand.shape[1])]
                         demand_str = ", ".join([f"{val:.2f}" for val in split_demand_values])
@@ -232,7 +220,7 @@ def main(args):
                         original_str = ", ".join([f"{val:.1f}" for val in original_values])
 
                         # 중복 노드 표시 여부 확인
-                        overlapping = node_idx in [n for n, _, _ in analysis["overlapping_nodes"]]
+                        overlapping = analysis and node_idx in [n for n, _, _ in analysis["overlapping_nodes"]]
 
                         if overlapping:
                             f.write(f"  - {node_name} (할당된 수요/공급: [{demand_str}], 원래의 {ratio:.2f}배 [{original_str}])\n")
@@ -244,12 +232,14 @@ def main(args):
                         demand_str = ", ".join([f"{val:.1f}" for val in demand_values])
                         f.write(f"  - {node_name} (수요/공급: [{demand_str}])\n")
 
-                        # 클러스터 내 수요/공급 균형
-                        if analysis:
-                            balances = analysis["cluster_balances"][cluster_idx]
-                            balance_str = ", ".join([f"{bal:.1f}" for bal in balances])
-                            f.write(f"  * 품목별 수요/공급 균형: [{balance_str}]\n")
-                            f.write(f"  * 평균 노드 간 거리: {analysis['avg_distances'][cluster_idx]:.1f}km\n\n")
+                # 클러스터 내 수요/공급 균형 (클러스터 단위로 출력)
+                if analysis:
+                    balances = analysis["cluster_balances"][cluster_idx]
+                    balance_str = ", ".join([f"{bal:.1f}" for bal in balances])
+                    f.write(f"  * 품목별 수요/공급 균형: [{balance_str}]\n")
+                    f.write(f"  * 평균 노드 간 거리: {analysis['avg_distances'][cluster_idx]:.1f}km\n\n")
+                else:
+                    f.write("\n")
 
             # 중복 노드 분석
             if analysis:
@@ -264,10 +254,10 @@ def main(args):
 
         print(f"결과가 {results_dir} 디렉토리에 저장되었습니다.")
     else:
-        # 적합도 그래프 표시
+        # 적합도 그래프 표시 (저장하지 않을 경우)
         plot_fitness_history(fitness_history)
-        
-        # 클러스터별 시각화 함수 호출 코드 (main.py의 결과 저장 부분에 추가)
+
+    # 클러스터별 시각화 (저장 여부와 관계없이 실행)
     try:
         # 클러스터별 시각화
         cluster_fig = visualize_clusters_by_cluster(
@@ -278,20 +268,49 @@ def main(args):
             analysis=analysis,
             balance_tolerance=args.balance_tolerance
         )
-        cluster_fig.savefig(f"{results_dir}/clusters_by_cluster.png")
 
-        # 화면에 표시 (저장하지 않을 경우)
-        if not args.save_results:
-            plt.show()
+        # 저장하는 경우
+        if args.save_results and results_dir:
+            cluster_fig.savefig(f"{results_dir}/clusters_by_cluster.png", dpi=300, bbox_inches='tight')
+            print(f"클러스터별 시각화가 {results_dir}/clusters_by_cluster.png에 저장되었습니다.")
+
+        # 화면에 표시 (저장 여부와 관계없이)
+        plt.show()
+
+        # 메모리 정리를 위해 figure 닫기
+        plt.close(cluster_fig)
 
     except Exception as e:
         print(f"클러스터별 시각화 중 오류: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+    # 클러스터 시각화 및 저장 (각 품목별) - 저장하는 경우에만 실행
+    if args.save_results and results_dir:
+        for item_idx in range(fixed_net_demand.shape[1]):
+            try:
+                # visualize_clusters_by_cluster 함수에 items 매개변수가 있는지 확인 필요
+                # 만약 없다면 visualize_clusters 함수 사용
+                cluster_fig = visualize_clusters(
+                    locations, 
+                    dist_matrix, 
+                    clusters, 
+                    fixed_net_demand,
+                    time_period=item_idx,  # items 대신 time_period 사용
+                    min_nodes_per_cluster=args.min_nodes_per_cluster,
+                    balance_tolerance=args.balance_tolerance
+                )
+                cluster_fig.savefig(f"{results_dir}/clusters_time_{item_idx+1}.png", dpi=300, bbox_inches='tight')
+                plt.close(cluster_fig)  # 메모리 절약을 위해 닫기
+                print(f"품목 {item_idx+1} 시각화가 저장되었습니다.")
+            except Exception as e:
+                print(f"품목 {item_idx+1} 시각화 중 오류: {str(e)}")
 
 
 
 # 중요: 이 블록이 직접 실행될 때만 main 함수를 호출하도록 합니다
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="강원도 중복 허용 클러스터링 - 유전 알고리즘")
+    parser = argparse.ArgumentParser(description="중복 허용 클러스터링 - 유전 알고리즘")
     
     parser.add_argument("--num_clusters", type=int, default=3, 
                         help="클러스터 수")
