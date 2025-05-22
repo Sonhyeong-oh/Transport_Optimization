@@ -796,6 +796,6 @@ def visualize_clusters_by_cluster(
         row, col = i // n_cols, i % n_cols
         fig.delaxes(axes[row][col])
     
-    plt.suptitle('강원도 노드 클러스터링 결과 - 모든 클러스터 시각화', fontsize=16)
+    plt.suptitle('노드 클러스터링 결과 - 모든 클러스터 시각화', fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.96])  # suptitle을 위한 공간 확보
     return fig
