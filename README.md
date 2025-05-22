@@ -26,6 +26,7 @@
    ![image](https://github.com/user-attachments/assets/1ac55459-8d45-4ad0-8444-a65bb89635b5)
 
    * 시각화
+     
    ![클러스터링 시각화](https://github.com/user-attachments/assets/f9dd5c50-ee87-4ab8-b8c5-301b0d0bd96b)
 
 
