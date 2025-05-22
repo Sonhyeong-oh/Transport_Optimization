@@ -20,6 +20,7 @@
    (GAcluster_model과 GAcluster_utils를 import 하여 GAcluster 실행)
 
    * 텍스트 출력 결과
+     
    ![terminal result](https://github.com/user-attachments/assets/1bb3e4ed-65a3-48aa-b722-5693ab6e2b22)
 
    ![image](https://github.com/user-attachments/assets/1ac55459-8d45-4ad0-8444-a65bb89635b5)
