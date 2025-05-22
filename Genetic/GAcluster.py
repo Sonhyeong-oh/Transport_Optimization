@@ -312,15 +312,15 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="중복 허용 클러스터링 - 유전 알고리즘")
     
-    parser.add_argument("--num_clusters", type=int, default=3, 
+    parser.add_argument("--num_clusters", type=int, default=4, 
                         help="클러스터 수")
     parser.add_argument("--generations", type=int, default=100, 
                         help="실행할 유전 알고리즘 세대 수")
-    parser.add_argument("--population_size", type=int, default=100, 
+    parser.add_argument("--population_size", type=int, default=1000, 
                         help="유전 알고리즘 인구 크기")
     parser.add_argument("--mutation_rate", type=float, default=0.5, 
                         help="돌연변이 확률")
-    parser.add_argument("--elite_size", type=int, default=5, 
+    parser.add_argument("--elite_size", type=int, default=10, 
                         help="엘리트 솔루션 수")
     parser.add_argument("--distance_weight", type=float, default=0.3, 
                         help="거리 비용의 가중치 (0~1)")
