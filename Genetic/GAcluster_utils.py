@@ -46,7 +46,7 @@ def visualize_clusters(
     dist_matrix: torch.Tensor,
     clusters: List[List[int]],
     net_demand: torch.Tensor,
-    time_period: int = 0,
+    items: int = 0,
     min_nodes_per_cluster: int = 2,
     balance_tolerance: float = 0.1
 ) -> plt.Figure:
@@ -58,7 +58,7 @@ def visualize_clusters(
         dist_matrix: 거리 행렬
         clusters: 클러스터 할당 결과 (노드 인덱스의 리스트들)
         net_demand: 노드별 수요/공급 데이터
-        time_period: 시각화할 시간대 인덱스
+        item_idx: 시각화할 품목 인덱스
         min_nodes_per_cluster: 각 클러스터의 최소 노드 수
         balance_tolerance: 수요/공급 균형 허용 오차
         
@@ -107,7 +107,7 @@ def visualize_clusters(
     # 노드 색상: 수요는 빨간색, 공급은 파란색, 중립은 회색
     node_colors = []
     for i in range(len(locations)):
-        demand = net_demand[i, time_period].item()
+        demand = net_demand[i, items].item()
         if demand < 0:  # 수요 (음수)
             node_colors.append('red')
         elif demand > 0:  # 공급 (양수)
@@ -116,7 +116,7 @@ def visualize_clusters(
             node_colors.append('gray')
     
     # 노드 크기: 수요/공급 절대값에 비례
-    node_sizes = [300 + 100 * abs(net_demand[i, time_period].item()) for i in range(len(locations))]
+    node_sizes = [300 + 100 * abs(net_demand[i, items].item()) for i in range(len(locations))]
     
     # 노드 그리기
     for i, (x, y) in enumerate(pos):
@@ -135,7 +135,7 @@ def visualize_clusters(
     #         continue
             
     #     # 수요/공급 균형 조건 확인
-    #     cluster_demand = sum(net_demand[node_idx, time_period].item() for node_idx in cluster)
+    #     cluster_demand = sum(net_demand[node_idx, items].item() for node_idx in cluster)
     #     if abs(cluster_demand) > balance_tolerance:
     #         continue
             
@@ -168,7 +168,7 @@ def visualize_clusters(
                            '-', color=cluster_color, alpha=0.5, linewidth=1.5)
             
             # 클러스터별 범례 추가
-            cluster_demand = sum(net_demand[node_idx, time_period].item() for node_idx in cluster)
+            cluster_demand = sum(net_demand[node_idx, items].item() for node_idx in cluster)
             try:
                 label = f'클러스터 {cluster_idx+1} (수요/공급 합계: {cluster_demand:.1f})'
             except:
@@ -183,11 +183,11 @@ def visualize_clusters(
     
     # 제목 및 레이블
     try:
-        title = f'강원도 노드 클러스터링 결과 (시간대 {time_period+1}) - 유효한 클러스터만 표시'
+        title = f'강원도 노드 클러스터링 결과 (품목 {items+1}) - 유효한 클러스터만 표시'
         xlabel = 'MDS 좌표 X'
         ylabel = 'MDS 좌표 Y'
     except:
-        title = f'Gangwon Province Node Clustering Result (Time Period {time_period+1}) - Valid Clusters Only'
+        title = f'Gangwon Province Node Clustering Result (Items {items+1}) - Valid Clusters Only'
         xlabel = 'MDS Coordinate X'
         ylabel = 'MDS Coordinate Y'
         
@@ -295,24 +295,24 @@ def analyze_clusters(
         if count > 1:
             analysis["overlapping_nodes"].append((node_idx, locations[node_idx], count))
     
-    num_time_periods = net_demand.shape[1]
+    num_items = net_demand.shape[1]
     
     # 클러스터별 분석
     for cluster_idx, cluster in enumerate(clusters):
         # 클러스터 크기
         analysis["cluster_sizes"].append(len(cluster))
         
-        # 시간대별 수요/공급 분석
-        demands_by_time = []
-        supplies_by_time = []
-        balances_by_time = []
+        # 품목목별 수요/공급 분석
+        demands_by_item = []
+        supplies_by_item = []
+        balances_by_item = []
         
-        for time_idx in range(num_time_periods):
+        for item_idx in range(num_items):
             demand = 0
             supply = 0
             
             for node_idx in cluster:
-                value = net_demand[node_idx, time_idx].item()
+                value = net_demand[node_idx, item_idx].item()
                 if value < 0:
                     demand += abs(value)  # 수요는 음수, 절대값으로 변환
                 elif value > 0:
@@ -320,13 +320,13 @@ def analyze_clusters(
             
             # 균형은 수요 - 공급 (0에 가까울수록 균형이 맞음)
             balance = demand - supply
-            demands_by_time.append(demand)
-            supplies_by_time.append(supply)
-            balances_by_time.append(balance)
+            demands_by_item.append(demand)
+            supplies_by_item.append(supply)
+            balances_by_item.append(balance)
         
-        analysis["cluster_demands"].append(demands_by_time)
-        analysis["cluster_supplies"].append(supplies_by_time)
-        analysis["cluster_balances"].append(balances_by_time)
+        analysis["cluster_demands"].append(demands_by_item)
+        analysis["cluster_supplies"].append(supplies_by_item)
+        analysis["cluster_balances"].append(balances_by_item)
         
         # 클러스터 내 평균 거리 계산
         if len(cluster) > 1:
@@ -347,7 +347,7 @@ def analyze_clusters(
         
         # 클러스터 유효성 확인 (최소 노드 수 및 균형 조건)
         is_valid_size = len(cluster) >= min_nodes_per_cluster
-        is_balanced = all(abs(balance) <= balance_tolerance for balance in balances_by_time)
+        is_balanced = all(abs(balance) <= balance_tolerance for balance in balances_by_item)
         
         cluster_status = {
             "cluster_idx": cluster_idx,
@@ -516,11 +516,11 @@ def print_cluster_report(
         if split_ratios:
             # 분할된 수요/공급으로 균형 재계산
             recalculated_balances = []
-            for time_idx in range(net_demand.shape[1]):
+            for item_idx in range(net_demand.shape[1]):
                 cluster_net_demand = 0.0
                 for node_idx in cluster:
                     ratio = split_ratios.get((node_idx, cluster_idx), 1.0)
-                    value = net_demand[node_idx, time_idx].item() * ratio
+                    value = net_demand[node_idx, item_idx].item() * ratio
                     cluster_net_demand += value
                 recalculated_balances.append(cluster_net_demand)
             
@@ -529,18 +529,18 @@ def print_cluster_report(
             try:
                 if use_english:
                     raise Exception("Use English")
-                print(f"  * 재계산된 시간대별 수요/공급 균형: [{balance_str}]")
+                print(f"  * 재계산된 품목별 수요/공급 균형: [{balance_str}]")
             except:
-                print(f"  * Recalculated Time-period Demand/Supply Balance: [{balance_str}]")
+                print(f"  * Recalculated item Demand/Supply Balance: [{balance_str}]")
         else:
             # 원래 값으로 계산된 균형 표시
             balance_str = ", ".join([f"{bal:.1f}" for bal in balances])
             try:
                 if use_english:
                     raise Exception("Use English")
-                print(f"  * 시간대별 수요/공급 균형: [{balance_str}]")
+                print(f"  * 품목별 수요/공급 균형: [{balance_str}]")
             except:
-                print(f"  * Time-period Demand/Supply Balance: [{balance_str}]")
+                print(f"  * item Demand/Supply Balance: [{balance_str}]")
         
         try:
             if use_english:
@@ -700,8 +700,8 @@ def visualize_clusters_by_cluster(
         # 클러스터 유효성 검사 추가
         is_valid_size = len(cluster) >= 2  # 최소 노드 수
         is_balanced = True
-        for time_idx in range(net_demand.shape[1]):
-            cluster_net_demand = sum(net_demand[node_idx, time_idx].item() for node_idx in cluster)
+        for item_idx in range(net_demand.shape[1]):
+            cluster_net_demand = sum(net_demand[node_idx, item_idx].item() for node_idx in cluster)
             if abs(cluster_net_demand) > balance_tolerance:
                 is_balanced = False
                 break
