@@ -128,18 +128,18 @@ def visualize_clusters(
             ax.text(x, y, english_locations[i], fontsize=10, ha='center', va='center')
     
     # 유효한 클러스터 필터링 (최소 노드 수 및 수요/공급 균형 조건 만족)
-    valid_clusters = []
-    for cluster in clusters:
-        # 최소 노드 수 조건 확인
-        if len(cluster) < min_nodes_per_cluster:
-            continue
+    # valid_clusters = []
+    # for cluster in clusters:
+    #     # 최소 노드 수 조건 확인
+    #     if len(cluster) < min_nodes_per_cluster:
+    #         continue
             
-        # 수요/공급 균형 조건 확인
-        cluster_demand = sum(net_demand[node_idx, time_period].item() for node_idx in cluster)
-        if abs(cluster_demand) > balance_tolerance:
-            continue
+    #     # 수요/공급 균형 조건 확인
+    #     cluster_demand = sum(net_demand[node_idx, time_period].item() for node_idx in cluster)
+    #     if abs(cluster_demand) > balance_tolerance:
+    #         continue
             
-        valid_clusters.append(cluster)
+    #     valid_clusters.append(cluster)
     
     # 범례 요소
     legend_elements = [
@@ -148,6 +148,8 @@ def visualize_clusters(
         plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', markersize=10, label='중립 노드')
     ]
     
+    valid_clusters = [cluster for cluster in clusters if len(cluster) > 0]
+
     # 클러스터가 있는 경우에만 표시
     if valid_clusters:
         # 클러스터별 색상 맵 생성
@@ -658,46 +660,20 @@ def visualize_clusters_by_cluster(
     mds = MDS(n_components=2, dissimilarity='precomputed', random_state=42)
     pos = mds.fit_transform(dist_matrix_np)
     
-    # 유효한 클러스터 필터링
-    if analysis and 'valid_clusters' in analysis:
-        valid_cluster_indices = analysis['valid_clusters']
-        valid_clusters = [clusters[idx] for idx in valid_cluster_indices]
-    else:
-        # 모든 품목에서 균형이 맞는 클러스터 찾기
-        valid_clusters = []
-        for cluster_idx, cluster in enumerate(clusters):
-            if len(cluster) < 2:  # 최소 노드 수 조건
-                continue
-                
-            # 모든 품목에서 균형 확인
-            is_balanced = True
-            for time_idx in range(net_demand.shape[1]):
-                cluster_net_demand = sum(net_demand[node_idx, time_idx].item() for node_idx in cluster)
-                if abs(cluster_net_demand) > balance_tolerance:
-                    is_balanced = False
-                    break
-                    
-            if is_balanced:
-                valid_clusters.append(cluster)
-    
-    # 유효한 클러스터가 없는 경우
-    if not valid_clusters:
+    # 모든 비어있지 않은 클러스터 사용
+    all_clusters = [(idx, cluster) for idx, cluster in enumerate(clusters) if len(cluster) > 0]
+
+    # 클러스터가 없는 경우
+    if not all_clusters:
         fig, ax = plt.subplots(figsize=(10, 8))
-        ax.text(0.5, 0.5, '유효한 클러스터가 없습니다',
+        ax.text(0.5, 0.5, '클러스터가 없습니다',
                 ha='center', va='center', fontsize=14, color='red',
                 transform=ax.transAxes)
-        ax.set_title('강원도 클러스터링 결과 - 유효한 클러스터 없음')
+        ax.set_title('강원도 클러스터링 결과 - 클러스터 없음')
         return fig
     
     # 그래프 크기 설정 (클러스터 수에 따라 서브플롯 크기 조정)
-    n_clusters = len(valid_clusters)
-    n_cols = min(2, n_clusters)  # 최대 2열
-    n_rows = (n_clusters + n_cols - 1) // n_cols  # 필요한 행 수 계산
-    
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12 * n_cols, 10 * n_rows))
-    
-    # 그래프 크기 설정 (클러스터 수에 따라 서브플롯 크기 조정)
-    n_clusters = len(valid_clusters)
+    n_clusters = len(all_clusters)
     
     if n_clusters == 1:
         # 클러스터가 1개인 경우, 단일 Axes 객체만 생성
@@ -717,13 +693,24 @@ def visualize_clusters_by_cluster(
             axes = np.array([axes])
     
     # 클러스터별 시각화
-    for i, cluster in enumerate(valid_clusters):
+    for i, (cluster_idx, cluster) in enumerate(all_clusters):  # 수정: 튜플 언패킹
         row, col = i // n_cols, i % n_cols
         ax = axes[row][col]
         
+        # 클러스터 유효성 검사 추가
+        is_valid_size = len(cluster) >= 2  # 최소 노드 수
+        is_balanced = True
+        for time_idx in range(net_demand.shape[1]):
+            cluster_net_demand = sum(net_demand[node_idx, time_idx].item() for node_idx in cluster)
+            if abs(cluster_net_demand) > balance_tolerance:
+                is_balanced = False
+                break
+        is_valid = is_valid_size and is_balanced
+        
         # 모든 노드 그리기 (회색, 작게)
-        for j, (x, y) in enumerate(pos):
+        for j in range(len(locations)):  # 수정: enumerate 제거
             if j not in cluster:  # 클러스터에 속하지 않는 노드
+                x, y = pos[j, 0], pos[j, 1]  # 수정: pos 인덱싱
                 ax.scatter(x, y, color='lightgray', s=200, alpha=0.3, edgecolor='gray')
                 try:
                     ax.text(x, y, locations[j], fontsize=8, ha='center', va='center', color='gray')
@@ -732,11 +719,11 @@ def visualize_clusters_by_cluster(
         
         # 클러스터에 속한 노드 그리기 (품목별 수요/공급 정보 텍스트로 표시)
         for j in cluster:
-            x, y = pos[j]
+            x, y = pos[j, 0], pos[j, 1]
             
-            # 노드의 전체 품목 수요/공급을 고려하여 색상 결정
-            total_demand = sum(1 for t in range(net_demand.shape[1]) if net_demand[j, t] < 0)
-            total_supply = sum(1 for t in range(net_demand.shape[1]) if net_demand[j, t] > 0)
+            # 노드의 전체 품목 수요/공급을 고려하여 색상 결정 (수정: .item() 추가)
+            total_demand = sum(1 for t in range(net_demand.shape[1]) if net_demand[j, t].item() < 0)
+            total_supply = sum(1 for t in range(net_demand.shape[1]) if net_demand[j, t].item() > 0)
             
             if total_demand > total_supply:
                 node_color = 'red'  # 주로 수요 노드
@@ -744,8 +731,12 @@ def visualize_clusters_by_cluster(
                 node_color = 'blue'  # 주로 공급 노드
             else:
                 node_color = 'purple'  # 수요와 공급이 비슷한 노드
-                
-            ax.scatter(x, y, color=node_color, s=500, edgecolor='black', linewidth=2, alpha=0.7)
+            
+            # 유효하지 않은 클러스터의 노드는 다른 스타일로 표시
+            edge_color = 'black' if is_valid else 'red'
+            edge_width = 2 if is_valid else 3
+            ax.scatter(x, y, color=node_color, s=500, edgecolor=edge_color, 
+                      linewidth=edge_width, alpha=0.7)
             
             # 노드 이름 표시
             try:
@@ -769,13 +760,17 @@ def visualize_clusters_by_cluster(
             ax.text(x, y - 0.1, info_text, fontsize=8, ha='center', va='top', 
                     bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.5'))
         
-        # 클러스터 내 노드 간 연결선 그리기
+        # 클러스터 내 노드 간 연결선 그리기 (유효성에 따라 스타일 변경)
+        line_style = '-' if is_valid else '--'
+        line_color = 'green' if is_valid else 'orange'
+        line_alpha = 0.7 if is_valid else 0.5
+        
         for j in range(len(cluster)):
             for k in range(j+1, len(cluster)):
                 node_j, node_k = cluster[j], cluster[k]
                 ax.plot([pos[node_j, 0], pos[node_k, 0]], 
                       [pos[node_j, 1], pos[node_k, 1]], 
-                      '-', color='green', alpha=0.7, linewidth=2)
+                      line_style, color=line_color, alpha=line_alpha, linewidth=2)
         
         # 클러스터 균형 정보
         balance_info = []
@@ -787,9 +782,9 @@ def visualize_clusters_by_cluster(
         ax.text(0.02, 0.02, balance_text, fontsize=12, ha='left', va='bottom', 
                 transform=ax.transAxes, bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.5'))
         
-        # 클러스터 제목
-        cluster_idx = clusters.index(cluster) if cluster in clusters else valid_clusters.index(cluster)
-        ax.set_title(f'클러스터 {cluster_idx+1} ({len(cluster)}개 노드)', fontsize=14)
+        # 클러스터 제목 (유효성 표시 포함)
+        status = "유효" if is_valid else "유효하지 않음"
+        ax.set_title(f'클러스터 {cluster_idx+1} ({len(cluster)}개 노드) [{status}]', fontsize=14)
         
         # 축 제거
         ax.set_xticks([])
@@ -801,6 +796,6 @@ def visualize_clusters_by_cluster(
         row, col = i // n_cols, i % n_cols
         fig.delaxes(axes[row][col])
     
-    plt.suptitle('강원도 노드 클러스터링 결과 - 클러스터별 시각화', fontsize=16)
+    plt.suptitle('강원도 노드 클러스터링 결과 - 모든 클러스터 시각화', fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.96])  # suptitle을 위한 공간 확보
     return fig
