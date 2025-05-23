@@ -3,6 +3,7 @@ import numpy as np
 import random
 from typing import List, Tuple, Dict
 
+# import 용 코드
 
 class ClusteringSolution:
     """
