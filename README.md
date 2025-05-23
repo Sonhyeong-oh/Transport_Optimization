@@ -19,10 +19,9 @@
 
    (GAcluster_model과 GAcluster_utils를 import 하여 GAcluster 실행)
 
-   * 텍스트 출력 결과
+   * 결과 출력 예시
 
      ![terminal result 3-1](https://github.com/user-attachments/assets/bdc7271f-7284-46f2-bf66-ffc534529069)
-     ![terminal result 3-2](https://github.com/user-attachments/assets/7bffa6f7-e58a-48d8-943a-85313f56eace)
 
 
 # 25.05.21 (수)
@@ -32,9 +31,4 @@
 
    * 텍스트 출력 결과
 
-  ![image](https://github.com/user-attachments/assets/601b464b-a00a-44bd-a3a5-cdbe040e37f8)![image](https://github.com/user-attachments/assets/65d2e82c-5eed-4818-887f-f872e0550f71)![image](https://github.com/user-attachments/assets/6ce96e85-c542-4929-bec8-606a7c4c944e)
-
-
-
-
-
+  ![image](https://github.com/user-attachments/assets/2ade8c3b-f011-40b4-b6b0-f305e30875ad)![image](https://github.com/user-attachments/assets/d7e63393-97a2-448c-bbab-54393671788d)
