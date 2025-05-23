@@ -59,10 +59,12 @@ def main(args):
 
     # 노드별 수요/공급 데이터
     fixed_net_demand = torch.tensor([
-        [ 1,  -1,  0], [-3,  -2,  2], [-2,   4,  0], [ 2,  -3,  2], [ 4,  -2, -2],
-        [ 0,   1, -1], [-1,   2, -1], [ 1,  -1,  0], [-2,   0,  1], [ 2,   2, -3],
-        [ 0,   0,  1], [-1,   1, -1], [ 1,   1,  1], [ 0,  -2,  2], [-2,  -1,  1],
-        [ 2,  -2,  0], [-1,   2,  1], [ 3,  -1, -1]
+        [-5, -4,  1], [-5, -5,  5], [-1,  5,  3],
+        [-5,  5, -5], [ 5, -5, -5], [ 1, -1,  2],
+        [ 1, -2, -3], [-5, -3, -5], [-1, -2,  2],
+        [ 3,  5, -1], [-2, -1, -5], [ 1, -3,  0],
+        [ 2,  5,  3], [ 3, -5,  3], [-1,  5,  2],
+        [ 4,  5,  1], [ 0,  5,  2], [ 5, -4,  0]
     ], dtype=torch.float32)
 
     # 노드 간 거리 행렬
@@ -322,15 +324,15 @@ if __name__ == "__main__":
                         help="돌연변이 확률")
     parser.add_argument("--elite_size", type=int, default=10, 
                         help="엘리트 솔루션 수")
-    parser.add_argument("--distance_weight", type=float, default=0.3, 
+    parser.add_argument("--distance_weight", type=float, default=0.0, 
                         help="거리 비용의 가중치 (0~1)")
-    parser.add_argument("--demand_balance_weight", type=float, default=0.7, 
+    parser.add_argument("--demand_balance_weight", type=float, default=1.0, 
                         help="수요/공급 균형 비용의 가중치 (0~1)")
     parser.add_argument("--threshold", type=float, default=0.5, 
                         help="클러스터 포함 멤버십 임계값")
     parser.add_argument("--min_nodes_per_cluster", type=int, default=2, 
                         help="각 클러스터에 필요한 최소 노드 수")
-    parser.add_argument("--balance_tolerance", type=float, default=1.0, 
+    parser.add_argument("--balance_tolerance", type=float, default=0.0, 
                         help="수요/공급 균형 허용 오차")
     parser.add_argument("--save_results", action="store_true", 
                         help="결과 파일 저장 여부")
