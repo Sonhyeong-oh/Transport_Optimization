@@ -1,301 +1,147 @@
 import torch
 import numpy as np
 from pulp import *
-import pandas as pd
+import random
 import time
+from itertools import combinations
 
-def solve_hybrid_cluster_balancing(fixed_net_demand, dist_matrix, num_clusters=4, 
-                                 use_fast_stage1=False, stage1_timeout=300):
+def solve_multiple_solutions_with_distance_selection(fixed_net_demand, dist_matrix, 
+                                                   num_clusters=3, max_solutions=10, 
+                                                   timeout_per_solution=60):
     """
-    하이브리드 접근법: 1단계 균형 해결 + 2단계 거리 최적화
-    **반드시 완벽한 균형(합=0) 달성**
+    여러 해를 찾고 클러스터 내 평균 거리가 가장 작은 해를 선택
     
     Parameters:
     - fixed_net_demand: 노드별 공급-수요 데이터
     - dist_matrix: 거리 행렬
     - num_clusters: 클러스터 수
-    - use_fast_stage1: True면 빠른 휴리스틱, False면 정수계획법 사용
-    - stage1_timeout: 1단계 최적화 시간 제한 (초)
+    - max_solutions: 탐색할 최대 해의 수
+    - timeout_per_solution: 각 해당 찾기 시간 제한
     
     Returns:
-    - 최적화 결과 (완벽한 균형 보장)
+    - 최적 거리를 가진 해와 모든 해의 정보
     """
     
-    print("=== 하이브리드 클러스터링 시작 (완벽한 균형 필수) ===")
-    total_start_time = time.time()
-    
-    if use_fast_stage1:
-        print("1단계: 빠른 휴리스틱으로 완벽한 균형 해결")
-        stage1_result = solve_stage1_heuristic(fixed_net_demand, num_clusters)
-        
-        if not stage1_result[0]:  # 휴리스틱 실패 시 정수계획법으로 전환
-            print("휴리스틱 실패 - 정수계획법으로 전환")
-            stage1_result = solve_stage1_integer_programming(fixed_net_demand, num_clusters, stage1_timeout)
-    else:
-        print("1단계: 정수계획법으로 완벽한 균형 해결")
-        stage1_result = solve_stage1_integer_programming(fixed_net_demand, num_clusters, stage1_timeout)
-    
-    if not stage1_result[0]:
-        print("❌ 완벽한 균형 달성 실패")
-        return False, None, None, 0
-    
-    # 균형 검증
-    success, results, cluster_assignments = stage1_result
-    print("✓ 1단계 균형 검증:")
-    total_imbalance = 0
-    for c, info in cluster_assignments.items():
-        cluster_imbalance = np.sum(np.abs(info['balance']))
-        total_imbalance += cluster_imbalance
-        balance_status = "✓" if cluster_imbalance < 1e-8 else "✗"
-        print(f"  클러스터 {c}: {info['balance']} {balance_status}")
-    
-    if total_imbalance >= 1e-8:
-        print(f"❌ 균형 미달성 (총 불균형: {total_imbalance:.10f})")
-        return False, None, None, 0
-    
-    print("✅ 완벽한 균형 달성 확인!")
-    
-    print("2단계: 거리 최적화")
-    final_result = solve_stage2_distance_optimization(
-        stage1_result, fixed_net_demand, dist_matrix, num_clusters
-    )
-    
-    total_elapsed = time.time() - total_start_time
-    print(f"총 실행 시간: {total_elapsed:.2f}초")
-    
-    return final_result + (total_elapsed,)
-
-
-def solve_stage1_integer_programming(fixed_net_demand, num_clusters, timeout=300):
-    """
-    1단계: 기존 정수계획법으로 균형 해결 (시간 제한 있음)
-    """
+    print("=== 다중해 탐색 및 거리 기반 최적해 선택 ===")
     start_time = time.time()
     
-    # 데이터 준비
     demand_np = fixed_net_demand.numpy()
+    dist_np = dist_matrix.numpy()
     n_nodes, n_commodities = demand_np.shape
     
-    print(f"  노드 수: {n_nodes}, 품목 수: {n_commodities}, 클러스터 수: {num_clusters}")
+    # 1단계: 여러 해 탐색
+    print(f"1단계: 최대 {max_solutions}개 해 탐색...")
+    solutions = find_diverse_solutions(demand_np, n_nodes, n_commodities, num_clusters, 
+                                     max_solutions, timeout_per_solution)
     
-    # 문제 생성
-    prob = LpProblem("Stage1_Balance", LpMinimize)
+    if not solutions:
+        print("❌ 실행 가능한 해를 찾지 못했습니다.")
+        return None, None
     
-    # 결정변수
+    print(f"✅ {len(solutions)}개의 서로 다른 해 발견!")
+    
+    # 2단계: 각 해의 거리 계산
+    print("\n2단계: 각 해의 클러스터 내 평균 거리 계산...")
+    solution_distances = []
+    
+    for idx, solution in enumerate(solutions):
+        avg_distance = calculate_average_cluster_distance(solution, dist_np, n_nodes, num_clusters)
+        solution_distances.append((idx, avg_distance, solution))
+        print(f"  해 {idx + 1}: 평균 거리 = {avg_distance:.2f}")
+    
+    # 3단계: 최적 해 선택
+    solution_distances.sort(key=lambda x: x[1])  # 평균 거리 기준 정렬
+    best_idx, best_distance, best_solution = solution_distances[0]
+    
+    print(f"\n3단계: 최적해 선택")
+    print(f"✅ 해 {best_idx + 1}이 최적 (평균 거리: {best_distance:.2f})")
+    
+    # 4단계: 결과 변환
+    best_result = convert_solution_to_result_format(best_solution, demand_np, n_nodes, n_commodities, num_clusters)
+    
+    # 5단계: 거리 정보 추가
+    best_result_with_distance = add_distance_info_to_result(best_result, dist_np, best_distance)
+    
+    elapsed_time = time.time() - start_time
+    print(f"\n총 실행 시간: {elapsed_time:.2f}초")
+    
+    # 모든 해의 정보도 반환
+    all_solutions_info = []
+    for idx, distance, solution in solution_distances:
+        result = convert_solution_to_result_format(solution, demand_np, n_nodes, n_commodities, num_clusters)
+        result_with_distance = add_distance_info_to_result(result, dist_np, distance)
+        all_solutions_info.append((idx + 1, distance, result_with_distance))
+    
+    return best_result_with_distance, all_solutions_info
+
+
+def find_diverse_solutions(demand_np, n_nodes, n_commodities, num_clusters, max_solutions, timeout_per_solution):
+    """다양한 해 탐색"""
+    
+    solutions = []
+    
+    for solution_idx in range(max_solutions):
+        print(f"  해 {solution_idx + 1} 탐색중... ", end="")
+        
+        # 새로운 문제 생성
+        prob = LpProblem(f"Solution_{solution_idx}", LpMinimize)
+        
+        # 결정변수 생성
+        x = create_decision_variables(demand_np, n_nodes, n_commodities, num_clusters, solution_idx)
+        cluster_used = {c: LpVariable(f"cluster_used_{c}_{solution_idx}", cat='Binary') 
+                       for c in range(num_clusters)}
+        
+        # 목적함수 (다양성을 위한 랜덤 가중치)
+        objective = -lpSum([cluster_used[c] for c in range(num_clusters)])
+        if solution_idx > 0:
+            # 이전 해들과 다른 해를 찾기 위한 랜덤 가중치
+            random.seed(solution_idx * 42)  # 재현 가능한 랜덤
+            for (i, k, c, type_), var in x.items():
+                objective += random.uniform(0.0001, 0.001) * var
+        
+        prob += objective
+        
+        # 제약조건 추가
+        add_balance_constraints(prob, x, cluster_used, demand_np, n_nodes, n_commodities, num_clusters)
+        
+        # 이전 해들과 다른 해를 강제하는 제약조건
+        if solutions:
+            add_diversity_constraints_improved(prob, x, solutions, n_nodes, n_commodities, num_clusters)
+        
+        # 해결 (시간 제한)
+        solver = PULP_CBC_CMD(msg=0, timeLimit=timeout_per_solution)
+        prob.solve(solver)
+        
+        if prob.status == LpStatusOptimal:
+            solution = extract_solution_values(x, n_nodes, n_commodities, num_clusters)
+            solutions.append(solution)
+            print("✅")
+        else:
+            print("❌")
+            break  # 더 이상 해를 찾을 수 없음
+    
+    return solutions
+
+
+def create_decision_variables(demand_np, n_nodes, n_commodities, num_clusters, solution_idx):
+    """결정변수 생성"""
     x = {}
     for i in range(n_nodes):
         for k in range(n_commodities):
             for c in range(num_clusters):
                 if demand_np[i, k] >= 0:  # 공급
-                    x[(i, k, c, 'supply')] = LpVariable(f"x_supply_{i}_{k}_{c}", 
+                    x[(i, k, c, 'supply')] = LpVariable(f"x_supply_{i}_{k}_{c}_{solution_idx}", 
                                                        lowBound=0, upBound=demand_np[i, k], 
                                                        cat='Integer')
                 else:  # 수요
-                    x[(i, k, c, 'demand')] = LpVariable(f"x_demand_{i}_{k}_{c}", 
+                    x[(i, k, c, 'demand')] = LpVariable(f"x_demand_{i}_{k}_{c}_{solution_idx}", 
                                                        lowBound=0, upBound=-demand_np[i, k], 
                                                        cat='Integer')
-    
-    # 클러스터 사용 여부
-    cluster_used = {}
-    for c in range(num_clusters):
-        cluster_used[c] = LpVariable(f"cluster_used_{c}", cat='Binary')
-    
-    # 목적함수: 모든 클러스터 사용 강제
-    prob += -lpSum([cluster_used[c] for c in range(num_clusters)])
-    
-    # 제약조건 추가
-    add_balance_constraints_stage1(prob, x, cluster_used, demand_np, n_nodes, n_commodities, num_clusters)
-    
-    # 시간 제한으로 해결
-    print(f"  최적화 시작 (최대 {timeout}초)...")
-    solver = PULP_CBC_CMD(msg=1, timeLimit=timeout)
-    prob.solve(solver)
-    
-    elapsed = time.time() - start_time
-    print(f"  1단계 완료 시간: {elapsed:.2f}초")
-    
-    if prob.status == LpStatusOptimal:
-        print("  1단계 성공: 최적해 발견")
-        return extract_stage1_results(x, demand_np, n_nodes, n_commodities, num_clusters)
-    elif prob.status == LpStatusNotSolved:
-        print("  1단계 시간 초과: 현재까지의 해 사용")
-        return extract_stage1_results(x, demand_np, n_nodes, n_commodities, num_clusters)
-    else:
-        print(f"  1단계 실패: {LpStatus[prob.status]}")
-        return False, None, None
+    return x
 
 
-def solve_stage1_heuristic(fixed_net_demand, num_clusters):
-    """
-    1단계: 빠른 휴리스틱으로 **완벽한** 균형 해결 (노드 분할 허용)
-    """
-    start_time = time.time()
-    
-    demand_np = fixed_net_demand.numpy()
-    n_nodes, n_commodities = demand_np.shape
-    
-    print(f"  빠른 휴리스틱 사용 (완벽한 균형 보장)...")
-    
-    # 완벽한 균형을 위한 휴리스틱 접근법
-    # 1. 각 노드를 여러 클러스터에 분할할 수 있음
-    # 2. 목표: 각 클러스터의 수요-공급 합이 정확히 0
-    
-    # 노드별 할당 결과 저장
-    node_allocations = {}  # {node: {cluster: allocation_vector}}
-    cluster_balances = {c: np.zeros(n_commodities) for c in range(num_clusters)}
-    
-    # 초기화: 모든 노드를 모든 클러스터에 0으로 할당
-    for i in range(n_nodes):
-        node_allocations[i] = {c: np.zeros(n_commodities) for c in range(num_clusters)}
-    
-    # 그리디 알고리즘: 각 노드를 순차적으로 처리
-    for node_idx in range(n_nodes):
-        node_demand = demand_np[node_idx].copy()
-        
-        # 이 노드의 수요/공급을 클러스터들에 분배
-        remaining_demand = node_demand.copy()
-        
-        # 각 품목별로 처리
-        for commodity in range(n_commodities):
-            if abs(remaining_demand[commodity]) < 1e-10:
-                continue
-                
-            # 이 품목에 대해 가장 불균형한 클러스터들 찾기
-            cluster_needs = []
-            for c in range(num_clusters):
-                current_balance = cluster_balances[c][commodity]
-                # 수요가 있으면 공급이 필요한 클러스터 우선
-                # 공급이 있으면 수요가 필요한 클러스터 우선
-                if remaining_demand[commodity] > 0:  # 공급
-                    need_score = -current_balance  # 음수(수요 과다)일수록 우선
-                else:  # 수요
-                    need_score = current_balance   # 양수(공급 과다)일수록 우선
-                cluster_needs.append((c, need_score))
-            
-            # 필요도 순으로 정렬 (높은 순)
-            cluster_needs.sort(key=lambda x: x[1], reverse=True)
-            
-            # 남은 수요/공급을 클러스터들에 분배
-            remaining_amount = remaining_demand[commodity]
-            
-            for c, need_score in cluster_needs:
-                if abs(remaining_amount) < 1e-10:
-                    break
-                
-                # 이 클러스터에 할당할 양 결정
-                if abs(remaining_amount) <= abs(cluster_balances[c][commodity]):
-                    # 완전히 할당 가능
-                    allocation = remaining_amount
-                    remaining_amount = 0
-                else:
-                    # 부분 할당
-                    if cluster_balances[c][commodity] * remaining_amount < 0:
-                        # 반대 부호 (상쇄 가능)
-                        allocation = -cluster_balances[c][commodity]
-                        remaining_amount -= allocation
-                    else:
-                        # 같은 부호이거나 0 (균등 분배)
-                        num_remaining_clusters = len([x for x in cluster_needs if abs(cluster_balances[x[0]][commodity]) < 1e-10])
-                        if num_remaining_clusters > 0:
-                            allocation = remaining_amount / num_remaining_clusters
-                            remaining_amount -= allocation
-                        else:
-                            allocation = 0
-                
-                # 할당 실행
-                if abs(allocation) > 1e-10:
-                    node_allocations[node_idx][c][commodity] = allocation
-                    cluster_balances[c][commodity] += allocation
-    
-    # 미세 조정: 완벽한 균형을 위한 후처리
-    max_adjustment_iterations = 50
-    for iteration in range(max_adjustment_iterations):
-        max_imbalance = 0
-        worst_cluster = -1
-        worst_commodity = -1
-        
-        # 가장 불균형한 클러스터와 품목 찾기
-        for c in range(num_clusters):
-            for k in range(n_commodities):
-                imbalance = abs(cluster_balances[c][k])
-                if imbalance > max_imbalance:
-                    max_imbalance = imbalance
-                    worst_cluster = c
-                    worst_commodity = k
-        
-        if max_imbalance < 1e-10:  # 충분히 균형잡힘
-            break
-        
-        # 불균형 해결: 다른 클러스터에서 조정
-        needed_amount = -cluster_balances[worst_cluster][worst_commodity]
-        
-        # 보상해줄 수 있는 클러스터 찾기
-        for source_cluster in range(num_clusters):
-            if source_cluster == worst_cluster:
-                continue
-            
-            # 이 클러스터에서 조정 가능한 노드 찾기
-            for node_idx in range(n_nodes):
-                current_allocation = node_allocations[node_idx][source_cluster][worst_commodity]
-                
-                if abs(current_allocation) > 1e-10 and current_allocation * needed_amount > 0:
-                    # 조정 가능한 양 계산
-                    adjustment = min(abs(needed_amount), abs(current_allocation))
-                    if needed_amount > 0:
-                        transfer_amount = adjustment
-                    else:
-                        transfer_amount = -adjustment
-                    
-                    # 조정 실행
-                    node_allocations[node_idx][source_cluster][worst_commodity] -= transfer_amount
-                    node_allocations[node_idx][worst_cluster][worst_commodity] += transfer_amount
-                    cluster_balances[source_cluster][worst_commodity] -= transfer_amount
-                    cluster_balances[worst_cluster][worst_commodity] += transfer_amount
-                    
-                    needed_amount -= transfer_amount
-                    
-                    if abs(needed_amount) < 1e-10:
-                        break
-            
-            if abs(needed_amount) < 1e-10:
-                break
-    
-    elapsed = time.time() - start_time
-    print(f"  1단계 완료 시간: {elapsed:.2f}초")
-    
-    # 결과 변환
-    results = []
-    cluster_info = {c: {'nodes': [], 'balance': cluster_balances[c]} for c in range(num_clusters)}
-    
-    for node_idx in range(n_nodes):
-        for c in range(num_clusters):
-            allocation = node_allocations[node_idx][c]
-            if np.any(np.abs(allocation) > 1e-10):  # 0이 아닌 할당만
-                cluster_info[c]['nodes'].append((node_idx, allocation))
-                results.append({
-                    'node': node_idx,
-                    'cluster': c,
-                    'original_demand': demand_np[node_idx],
-                    'allocated_demand': allocation
-                })
-    
-    # 균형 확인
-    total_imbalance = sum(np.sum(np.abs(cluster_balances[c])) for c in range(num_clusters))
-    print(f"  총 불균형: {total_imbalance:.10f}")
-    
-    # 완벽한 균형 달성 확인
-    perfect_balance = total_imbalance < 1e-8
-    if perfect_balance:
-        print("  ✓ 완벽한 균형 달성!")
-    else:
-        print("  ✗ 완벽한 균형 미달성 - 정수계획법 필요")
-        return False, None, None
-    
-    return True, results, cluster_info
-
-
-def add_balance_constraints_stage1(prob, x, cluster_used, demand_np, n_nodes, n_commodities, num_clusters):
-    """1단계용 제약조건 추가"""
+def add_balance_constraints(prob, x, cluster_used, demand_np, n_nodes, n_commodities, num_clusters):
+    """균형 제약조건 추가"""
     
     # 제약조건 1: 각 노드의 공급/수요량이 정확히 분할되어야 함
     for i in range(n_nodes):
@@ -324,33 +170,102 @@ def add_balance_constraints_stage1(prob, x, cluster_used, demand_np, n_nodes, n_
     prob += lpSum([cluster_used[c] for c in range(num_clusters)]) == num_clusters
 
 
-def extract_stage1_results(x, demand_np, n_nodes, n_commodities, num_clusters):
-    """1단계 결과 추출"""
+def add_diversity_constraints_improved(prob, x, previous_solutions, n_nodes, n_commodities, num_clusters):
+    """개선된 다양성 제약조건"""
+    
+    for prev_solution in previous_solutions[-3:]:  # 최근 3개 해와만 비교 (성능상 이유)
+        # 할당 패턴이 다르도록 강제
+        differences = []
+        
+        # 주요 할당에 대해서만 차이 강제
+        for (i, k, c, type_), prev_val in prev_solution.items():
+            if prev_val > 0 and (i, k, c, type_) in x:
+                # 이전 해에서 양수 할당된 것과 다르게 할당
+                diff_var = LpVariable(f"diff_{i}_{k}_{c}_{type_}_{len(previous_solutions)}", cat='Binary')
+                prob += x[(i, k, c, type_)] <= prev_val - 1 + 1000 * diff_var
+                prob += x[(i, k, c, type_)] >= prev_val + 1 - 1000 * (1 - diff_var)
+                differences.append(diff_var)
+        
+        if differences:
+            # 최소 몇 개의 차이점이 있어야 함
+            prob += lpSum(differences) >= min(3, len(differences))
+
+
+def extract_solution_values(x, n_nodes, n_commodities, num_clusters):
+    """해 값 추출"""
+    solution = {}
+    for (i, k, c, type_), var in x.items():
+        val = var.varValue or 0
+        if val > 0:
+            solution[(i, k, c, type_)] = val
+    return solution
+
+
+def calculate_average_cluster_distance(solution, dist_np, n_nodes, num_clusters):
+    """클러스터 내 평균 거리 계산"""
+    
+    # 각 클러스터에 속한 노드들 추출
+    cluster_nodes = {c: set() for c in range(num_clusters)}
+    
+    for (i, k, c, type_), val in solution.items():
+        if val > 0:
+            cluster_nodes[c].add(i)
+    
+    total_distance = 0
+    total_pairs = 0
+    
+    for c in range(num_clusters):
+        nodes = list(cluster_nodes[c])
+        if len(nodes) <= 1:
+            continue
+        
+        # 클러스터 내 모든 노드 쌍의 거리 합
+        cluster_distance = 0
+        cluster_pairs = 0
+        
+        for i in range(len(nodes)):
+            for j in range(i + 1, len(nodes)):
+                node1, node2 = nodes[i], nodes[j]
+                cluster_distance += dist_np[node1][node2]
+                cluster_pairs += 1
+        
+        if cluster_pairs > 0:
+            total_distance += cluster_distance
+            total_pairs += cluster_pairs
+    
+    return total_distance / total_pairs if total_pairs > 0 else 0
+
+
+def convert_solution_to_result_format(solution, demand_np, n_nodes, n_commodities, num_clusters):
+    """해를 결과 형태로 변환"""
     
     results = []
     cluster_assignments = {c: {'nodes': [], 'balance': np.zeros(n_commodities)} 
                           for c in range(num_clusters)}
     
+    # 노드별 할당 추출
     for i in range(n_nodes):
         node_allocation = {c: np.zeros(n_commodities) for c in range(num_clusters)}
         
         for k in range(n_commodities):
             for c in range(num_clusters):
-                if demand_np[i, k] >= 0:  # 공급
-                    if (i, k, c, 'supply') in x:
-                        val = x[(i, k, c, 'supply')].varValue or 0
-                        if val > 0:
-                            node_allocation[c][k] += val
-                            cluster_assignments[c]['balance'][k] += val
-                else:  # 수요
-                    if (i, k, c, 'demand') in x:
-                        val = x[(i, k, c, 'demand')].varValue or 0
-                        if val > 0:
-                            node_allocation[c][k] -= val
-                            cluster_assignments[c]['balance'][k] -= val
+                # 공급 할당
+                supply_key = (i, k, c, 'supply')
+                if supply_key in solution:
+                    val = solution[supply_key]
+                    node_allocation[c][k] += val
+                    cluster_assignments[c]['balance'][k] += val
+                
+                # 수요 할당
+                demand_key = (i, k, c, 'demand')
+                if demand_key in solution:
+                    val = solution[demand_key]
+                    node_allocation[c][k] -= val
+                    cluster_assignments[c]['balance'][k] -= val
         
+        # 할당이 있는 클러스터만 기록
         for c in range(num_clusters):
-            if np.any(node_allocation[c] != 0):
+            if np.any(np.abs(node_allocation[c]) > 1e-10):
                 cluster_assignments[c]['nodes'].append((i, node_allocation[c]))
                 results.append({
                     'node': i,
@@ -362,115 +277,70 @@ def extract_stage1_results(x, demand_np, n_nodes, n_commodities, num_clusters):
     return True, results, cluster_assignments
 
 
-def solve_stage2_distance_optimization(stage1_result, fixed_net_demand, dist_matrix, num_clusters):
-    """
-    2단계: 1단계 결과를 바탕으로 거리 최적화
-    """
-    start_time = time.time()
+def add_distance_info_to_result(result_tuple, dist_np, avg_distance):
+    """결과에 거리 정보 추가"""
     
-    success, results, cluster_assignments = stage1_result
-    if not success:
-        return False, None, None
+    success, results, cluster_assignments = result_tuple
     
-    demand_np = fixed_net_demand.numpy()
-    dist_np = dist_matrix.numpy()
-    
-    # 각 클러스터에 속한 노드들 추출
-    cluster_nodes = {c: [] for c in range(num_clusters)}
-    for result in results:
-        node = result['node']
-        cluster = result['cluster']
-        if node not in cluster_nodes[cluster]:
-            cluster_nodes[cluster].append(node)
-    
-    # 각 클러스터의 중심 노드 선택 (거리 최소화)
-    optimized_assignments = {}
-    total_distance = 0
-    
-    for c in range(num_clusters):
-        nodes = cluster_nodes[c]
-        if len(nodes) <= 1:
-            center = nodes[0] if nodes else None
-            cluster_distance = 0
-        else:
-            # 클러스터 내 모든 노드 간 평균 거리가 최소인 노드를 중심으로 선택
-            best_center = None
-            min_avg_distance = float('inf')
-            
-            for potential_center in nodes:
-                avg_distance = np.mean([dist_np[potential_center][j] for j in nodes if j != potential_center])
-                if avg_distance < min_avg_distance:
-                    min_avg_distance = avg_distance
-                    best_center = potential_center
-            
-            center = best_center
-            cluster_distance = sum([dist_np[center][j] for j in nodes if j != center])
+    # 각 클러스터에 거리 정보 추가
+    for c, info in cluster_assignments.items():
+        nodes = [node_idx for node_idx, _ in info['nodes']]
         
-        total_distance += cluster_distance
-        optimized_assignments[c] = {
-            'center': center,
-            'nodes': nodes,
-            'distance': cluster_distance
-        }
+        if len(nodes) > 1:
+            # 클러스터 내 거리 계산
+            cluster_distance = 0
+            pair_count = 0
+            for i in range(len(nodes)):
+                for j in range(i + 1, len(nodes)):
+                    cluster_distance += dist_np[nodes[i]][nodes[j]]
+                    pair_count += 1
+            
+            cluster_avg_distance = cluster_distance / pair_count if pair_count > 0 else 0
+            info['cluster_avg_distance'] = cluster_avg_distance
+            info['cluster_total_distance'] = cluster_distance
+        else:
+            info['cluster_avg_distance'] = 0
+            info['cluster_total_distance'] = 0
     
-    # 기존 클러스터 할당에 거리 정보 추가
-    for c in range(num_clusters):
-        if c in cluster_assignments and c in optimized_assignments:
-            cluster_assignments[c]['center'] = optimized_assignments[c]['center']
-            cluster_assignments[c]['distance'] = optimized_assignments[c]['distance']
+    # 전체 평균 거리 추가
+    cluster_assignments['overall_avg_distance'] = avg_distance
     
-    elapsed = time.time() - start_time
-    print(f"  2단계 완료 시간: {elapsed:.2f}초")
-    print(f"  총 클러스터 내 거리: {total_distance:.1f}")
-    
-    return True, results, cluster_assignments
+    return success, results, cluster_assignments
 
 
-def print_hybrid_results(success, results, cluster_assignments, total_time, city_names=None):
-    """하이브리드 결과 출력 (완벽한 균형 강조)"""
-    if not success:
-        print("해결할 수 없는 문제입니다.")
-        return
+def print_distance_comparison_results(best_result, all_solutions_info, city_names=None):
+    """거리 비교 결과 출력"""
     
     if city_names is None:
-        city_names = [f"노드_{i}" for i in range(100)]  # 충분히 큰 리스트
+        city_names = [f"노드_{i}" for i in range(100)]
     
-    print(f"\n=== 하이브리드 클러스터링 결과 (총 {total_time:.2f}초) ===")
+    print(f"\n=== 거리 기반 최적해 선택 결과 ===")
     
-    total_distance = 0
-    perfect_balance_achieved = True
+    # 모든 해의 거리 비교
+    print(f"\n📊 모든 해의 평균 거리 비교:")
+    for solution_num, avg_distance, _ in all_solutions_info:
+        marker = "👑" if solution_num == all_solutions_info[0][0] else "  "
+        print(f"{marker} 해 {solution_num}: {avg_distance:.2f}")
+    
+    # 최적해 상세 정보
+    success, results, cluster_assignments = best_result
+    best_avg_distance = cluster_assignments['overall_avg_distance']
+    
+    print(f"\n🏆 최적해 상세 정보 (평균 거리: {best_avg_distance:.2f})")
     
     for c, info in cluster_assignments.items():
-        cluster_imbalance = np.sum(np.abs(info['balance']))
-        balance_perfect = cluster_imbalance < 1e-8
-        
-        if not balance_perfect:
-            perfect_balance_achieved = False
-        
+        if c == 'overall_avg_distance':
+            continue
+            
         print(f"\n클러스터 {c}:")
-        print(f"  ✅ 완벽한 균형: {'달성' if balance_perfect else '미달성'}")
-        print(f"  균형 상태: {info['balance']} (오차: {cluster_imbalance:.2e})")
-        print(f"  노드 수: {len(info['nodes'])}")
+        print(f"  ✅ 균형: {info['balance']} (완벽한 균형)")
+        print(f"  📍 클러스터 내 평균 거리: {info.get('cluster_avg_distance', 0):.2f}")
+        print(f"  🔢 노드 수: {len(info['nodes'])}")
         
-        if 'center' in info and info['center'] is not None:
-            center_name = city_names[info['center']] if info['center'] < len(city_names) else f"노드_{info['center']}"
-            print(f"  중심 노드: {center_name}")
-        
-        if 'distance' in info:
-            print(f"  클러스터 내 거리: {info['distance']:.1f}")
-            total_distance += info['distance']
-        
-        print("  포함 노드:")
+        print(f"  🏙️  포함 도시:")
         for node_idx, allocation in info['nodes']:
-            node_name = city_names[node_idx] if node_idx < len(city_names) else f"노드_{node_idx}"
-            # 할당량이 원래 수요와 다른 경우 (분할된 경우) 표시
-            print(f"    {node_name}: {allocation}")
-    
-    print(f"\n{'='*50}")
-    print(f"🎯 완벽한 균형 달성: {'✅ 성공' if perfect_balance_achieved else '❌ 실패'}")
-    print(f"📍 총 클러스터 내 거리 합: {total_distance:.1f}")
-    print(f"⏱️  총 실행 시간: {total_time:.2f}초")
-    print(f"{'='*50}")
+            city_name = city_names[node_idx] if node_idx < len(city_names) else f"노드_{node_idx}"
+            print(f"      {city_name}: {allocation}")
 
 
 # 실행 예제
@@ -508,27 +378,17 @@ if __name__ == "__main__":
     city_names = ['춘천', '원주', '강릉', '동해', '태백', '속초', '삼척', '홍천', 
                  '횡성', '영월', '평창', '정선', '철원', '화천', '양구', '인제', '고성', '양양']
     
-    print("=== 하이브리드 클러스터링 테스트 ===")
+    print("🎯 거리 최적화 기반 해 선택 시작...")
     
-    # 방법 1: 정수계획법 + 거리최적화 (시간제한 60초)
-    print("\n[방법 1] 정수계획법(60초) + 거리최적화")
-    success1, results1, cluster_assignments1, total_time1 = solve_hybrid_cluster_balancing(
-        fixed_net_demand, dist_matrix, num_clusters=4, 
-        use_fast_stage1=False, stage1_timeout=60
+    # 여러 해 탐색 및 최적 거리 해 선택
+    best_result, all_solutions = solve_multiple_solutions_with_distance_selection(
+        fixed_net_demand, dist_matrix, 
+        num_clusters=3, 
+        max_solutions=5,  # 5개 해 탐색
+        timeout_per_solution=500  # 각 해당 60초 제한
     )
-    if success1:
-        print_hybrid_results(success1, results1, cluster_assignments1, total_time1, city_names)
     
-    # 방법 2: 빠른 휴리스틱 + 거리최적화
-    print("\n" + "="*60)
-    print("[방법 2] 빠른 휴리스틱 + 거리최적화")
-    success2, results2, cluster_assignments2, total_time2 = solve_hybrid_cluster_balancing(
-        fixed_net_demand, dist_matrix, num_clusters=4, 
-        use_fast_stage1=True
-    )
-    if success2:
-        print_hybrid_results(success2, results2, cluster_assignments2, total_time2, city_names)
-    
-    print(f"\n=== 실행 시간 비교 ===")
-    print(f"정수계획법 방법: {total_time1:.2f}초")
-    print(f"휴리스틱 방법: {total_time2:.2f}초")
+    if best_result:
+        print_distance_comparison_results(best_result, all_solutions, city_names)
+    else:
+        print("❌ 해를 찾지 못했습니다.")
