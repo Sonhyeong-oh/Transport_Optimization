@@ -190,46 +190,60 @@ class GeneticClusteringAlgorithm:
         # 초기 인구 생성
         self.population = []
         for _ in range(population_size):
-            solution = self._create_initial_solution()
+            solution = self._create_balance_focused_solution()
             # 솔루션 적합도 초기화
             solution.fitness = self.evaluate_fitness(solution)
             self.population.append(solution)
     
-    def _create_initial_solution(self) -> ClusteringSolution:
-        """
-        클러스터당 최소 노드 수 제약과 모든 노드가 적어도 하나의 클러스터에 포함되도록 초기 솔루션 생성
-        """
+    def _create_balance_focused_solution(self) -> ClusteringSolution:
+        """균형에 특화된 초기 솔루션 생성"""
         solution = ClusteringSolution(self.num_nodes, self.num_clusters, self.num_items)
-    
-        # 초기에는 모든 멤버십을 낮게 설정
-        solution.membership_matrix = torch.ones((self.num_nodes, self.num_clusters)) * 0.2
-    
-        # 각 노드가 적어도 하나의 클러스터에 강하게 속하도록 보장
+
+        # 전체 수요/공급 계산
+        total_supply_nodes = []
+        total_demand_nodes = []
+        neutral_nodes = []
+
         for node_idx in range(self.num_nodes):
-            # 각 노드에 대해 랜덤한 클러스터를 선택하여 높은 멤버십 값 할당
-            cluster_idx = torch.randint(0, self.num_clusters, (1,)).item()
-            solution.membership_matrix[node_idx, cluster_idx] = 0.8 + 0.2 * torch.rand(1).item()  # 0.8~1.0 사이의 값
-    
-        # 각 클러스터가 적어도 최소 노드 수를 갖도록 보장
+            node_total = sum(self.net_demand[node_idx, t].item() for t in range(self.num_items))
+            if node_total > 0:
+                total_supply_nodes.append((node_idx, node_total))
+            elif node_total < 0:
+                total_demand_nodes.append((node_idx, abs(node_total)))
+            else:
+                neutral_nodes.append(node_idx)
+
+        # 공급/수요 크기별 정렬
+        total_supply_nodes.sort(key=lambda x: x[1], reverse=True)
+        total_demand_nodes.sort(key=lambda x: x[1], reverse=True)
+
+        # 각 클러스터에 균형잡힌 노드 할당
         for cluster_idx in range(self.num_clusters):
-            # 현재 클러스터에 강하게(0.5 이상) 속한 노드 수 확인
-            strong_members = sum(1 for node_idx in range(self.num_nodes) 
-                                if solution.membership_matrix[node_idx, cluster_idx] >= 0.5)
-            
-            # 최소 노드 수보다 적으면 추가 노드 할당
-            additional_needed = max(0, self.min_nodes_per_cluster - strong_members)
-            if additional_needed > 0:
-                # 현재 클러스터에 약하게 속한 노드들 중에서 선택
-                weak_members = [node_idx for node_idx in range(self.num_nodes) 
-                               if solution.membership_matrix[node_idx, cluster_idx] < 0.5]
-                
-                # 필요한 만큼 또는 가능한 최대 수만큼 선택
-                num_to_select = min(additional_needed, len(weak_members))
-                if num_to_select > 0 and weak_members:
-                    selected_nodes = random.sample(weak_members, num_to_select)
-                    for node_idx in selected_nodes:
-                        solution.membership_matrix[node_idx, cluster_idx] = 0.8 + 0.2 * torch.rand(1).item()
-    
+            cluster_supply_target = 0
+            cluster_demand_target = 0
+
+            # 큰 공급 노드부터 할당
+            if total_supply_nodes:
+                supply_node, supply_amount = total_supply_nodes.pop(0)
+                solution.membership_matrix[supply_node, cluster_idx] = 0.9
+                cluster_supply_target += supply_amount
+
+            # 균형을 맞출 수요 노드들 찾기
+            remaining_demand = cluster_supply_target
+            assigned_demand_nodes = []
+
+            for demand_node, demand_amount in total_demand_nodes[:]:
+                if remaining_demand <= 0:
+                    break
+                if demand_amount <= remaining_demand * 1.2:  # 20% 여유
+                    assigned_demand_nodes.append((demand_node, demand_amount))
+                    total_demand_nodes.remove((demand_node, demand_amount))
+                    remaining_demand -= demand_amount
+
+            # 수요 노드들 할당
+            for demand_node, _ in assigned_demand_nodes:
+                solution.membership_matrix[demand_node, cluster_idx] = 0.9
+
         return solution
 
     def split_node_demands(self, solution: ClusteringSolution) -> Dict[Tuple[int, int], float]:
@@ -268,6 +282,49 @@ class GeneticClusteringAlgorithm:
             # 어떤 클러스터에도 속하지 않는 경우 분할 비율 없음 (evaluate_fitness에서 처리)
 
         return split_ratios
+
+    def balance_aware_crossover(self, other: 'ClusteringSolution') -> Tuple['ClusteringSolution', 'ClusteringSolution']:
+        """균형을 고려한 교배"""
+        # 각 클러스터별 균형 점수 계산
+        self_balance_scores = self.calculate_cluster_balance_scores()
+        other_balance_scores = other.calculate_cluster_balance_scores()
+        
+        child1_membership = torch.zeros_like(self.membership_matrix)
+        child2_membership = torch.zeros_like(self.membership_matrix)
+        
+        # 클러스터별로 더 균형잡힌 부모에서 상속
+        for cluster_idx in range(self.num_clusters):
+            if self_balance_scores[cluster_idx] < other_balance_scores[cluster_idx]:
+                # self가 더 균형잡힘
+                child1_membership[:, cluster_idx] = self.membership_matrix[:, cluster_idx]
+                child2_membership[:, cluster_idx] = other.membership_matrix[:, cluster_idx]
+            else:
+                # other가 더 균형잡힘
+                child1_membership[:, cluster_idx] = other.membership_matrix[:, cluster_idx]
+                child2_membership[:, cluster_idx] = self.membership_matrix[:, cluster_idx]
+        
+        return ClusteringSolution(self.num_nodes, self.num_clusters, self.num_items, child1_membership), \
+               ClusteringSolution(self.num_nodes, self.num_clusters, self.num_items, child2_membership)
+
+    def calculate_cluster_balance_scores(self) -> List[float]:
+        """각 클러스터의 균형 점수 계산 (낮을수록 좋음)"""
+        clusters = self.get_crisp_clusters()
+        balance_scores = []
+
+        for cluster in clusters:
+            if not cluster:
+                balance_scores.append(float('inf'))
+                continue
+
+            total_imbalance = 0.0
+            for item_idx in range(self.num_items):
+                cluster_sum = sum(self.net_demand[node_idx, item_idx].item() for node_idx in cluster)
+                total_imbalance += abs(cluster_sum)
+
+            balance_scores.append(total_imbalance)
+
+        return balance_scores
+
 
     def evaluate_fitness(self, solution: ClusteringSolution) -> torch.Tensor:
         """
