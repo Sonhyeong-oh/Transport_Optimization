@@ -29,7 +29,7 @@
 2. 정수 계획법을 사용해 각 클러스터의 수요, 공급 합이 0이 되도록 구현 성공
 3. 유전 알고리즘 소요 시간 : 10 ~ 20분 vs. 정수 계획법 소요 시간 : 0.1초 내외
 
-   * 텍스트 출력 결과
+   * 결과 출력 예시
 
      ![image](https://github.com/user-attachments/assets/2ade8c3b-f011-40b4-b6b0-f305e30875ad)
      ![image](https://github.com/user-attachments/assets/d7e63393-97a2-448c-bbab-54393671788d)
