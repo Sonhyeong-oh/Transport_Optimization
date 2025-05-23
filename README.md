@@ -32,6 +32,9 @@
 
    * 텍스트 출력 결과
 
-   ![image](https://github.com/user-attachments/assets/14c5c4f1-7bf7-458a-8072-29291b6cf931)![image](https://github.com/user-attachments/assets/a60cddce-5e96-44e6-a14a-d7a52b711ad9)![image](https://github.com/user-attachments/assets/e65dc444-98c8-4b6a-8548-e43889dca966)
+  ![image](https://github.com/user-attachments/assets/601b464b-a00a-44bd-a3a5-cdbe040e37f8)![image](https://github.com/user-attachments/assets/65d2e82c-5eed-4818-887f-f872e0550f71)![image](https://github.com/user-attachments/assets/6ce96e85-c542-4929-bec8-606a7c4c944e)
+
+
+
 
 
