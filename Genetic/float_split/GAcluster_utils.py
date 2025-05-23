@@ -48,10 +48,11 @@ def visualize_clusters(
     net_demand: torch.Tensor,
     items: int = 0,
     min_nodes_per_cluster: int = 2,
-    balance_tolerance: float = 0.1
+    balance_tolerance: float = 0.1,
+    split_ratios: Dict[Tuple[int, int], float] = None  # 추가된 매개변수
 ) -> plt.Figure:
     """
-    클러스터링 결과를 시각화하는 함수
+    클러스터링 결과를 시각화하는 함수 (분할된 수요/공급 값 사용)
     
     Args:
         locations: 위치 이름 리스트
@@ -61,6 +62,7 @@ def visualize_clusters(
         item_idx: 시각화할 품목 인덱스
         min_nodes_per_cluster: 각 클러스터의 최소 노드 수
         balance_tolerance: 수요/공급 균형 허용 오차
+        split_ratios: 노드별, 클러스터별 분할 비율
         
     Returns:
         plt.Figure: 시각화 결과 그림
@@ -104,42 +106,69 @@ def visualize_clusters(
     # 그래프 생성
     fig, ax = plt.subplots(figsize=(12, 10))
     
-    # 노드 색상: 수요는 빨간색, 공급은 파란색, 중립은 회색
+    # 노드별 분할된 수요/공급 값 계산 함수
+    def get_node_demand_for_cluster(node_idx, cluster_idx, item_idx):
+        """특정 노드의 특정 클러스터에서의 분할된 수요/공급 값을 반환"""
+        if split_ratios and (node_idx, cluster_idx) in split_ratios:
+            ratio = split_ratios[(node_idx, cluster_idx)]
+            return net_demand[node_idx, item_idx].item() * ratio
+        else:
+            return net_demand[node_idx, item_idx].item()
+    
+    # 각 노드에 대해 해당하는 클러스터에서의 분할된 값으로 색상과 크기 결정
     node_colors = []
+    node_sizes = []
+    node_display_values = []  # 표시할 값들 저장
+    
     for i in range(len(locations)):
-        demand = net_demand[i, items].item()
+        # 노드가 속한 클러스터 찾기
+        node_cluster_idx = None
+        for cluster_idx, cluster in enumerate(clusters):
+            if i in cluster:
+                node_cluster_idx = cluster_idx
+                break
+        
+        if node_cluster_idx is not None and split_ratios:
+            # 분할된 수요/공급 값 사용
+            demand = get_node_demand_for_cluster(i, node_cluster_idx, items)
+            # 모든 품목의 분할된 값들 저장
+            all_split_values = []
+            for t in range(net_demand.shape[1]):
+                split_val = get_node_demand_for_cluster(i, node_cluster_idx, t)
+                all_split_values.append(split_val)
+            node_display_values.append(all_split_values)
+        else:
+            # 클러스터에 속하지 않은 노드나 분할 비율이 없는 경우 원래 값 사용
+            demand = net_demand[i, items].item()
+            all_original_values = [net_demand[i, t].item() for t in range(net_demand.shape[1])]
+            node_display_values.append(all_original_values)
+        
+        # 색상 결정
         if demand < 0:  # 수요 (음수)
             node_colors.append('red')
         elif demand > 0:  # 공급 (양수)
             node_colors.append('blue')
         else:  # 중립
             node_colors.append('gray')
-    
-    # 노드 크기: 수요/공급 절대값에 비례
-    node_sizes = [300 + 100 * abs(net_demand[i, items].item()) for i in range(len(locations))]
+        
+        # 크기 결정
+        node_sizes.append(300 + 100 * abs(demand))
     
     # 노드 그리기
     for i, (x, y) in enumerate(pos):
         ax.scatter(x, y, color=node_colors[i], s=node_sizes[i], edgecolor='black', linewidth=1, alpha=0.7)
+        
+        # 노드 이름과 분할된 값 표시
+        display_values = node_display_values[i]
+        value_str = f"[{display_values[items]:.2f}]"  # 현재 품목의 분할된 값 표시
+        
         # 한글 폰트 문제가 없으면 한글 지명 사용, 있으면 영문 지명 사용
         try:
-            ax.text(x, y, locations[i], fontsize=10, ha='center', va='center')
+            node_text = f"{locations[i]}\n{value_str}"
+            ax.text(x, y, node_text, fontsize=9, ha='center', va='center', weight='bold')
         except:
-            ax.text(x, y, english_locations[i], fontsize=10, ha='center', va='center')
-    
-    # 유효한 클러스터 필터링 (최소 노드 수 및 수요/공급 균형 조건 만족)
-    # valid_clusters = []
-    # for cluster in clusters:
-    #     # 최소 노드 수 조건 확인
-    #     if len(cluster) < min_nodes_per_cluster:
-    #         continue
-            
-    #     # 수요/공급 균형 조건 확인
-    #     cluster_demand = sum(net_demand[node_idx, items].item() for node_idx in cluster)
-    #     if abs(cluster_demand) > balance_tolerance:
-    #         continue
-            
-    #     valid_clusters.append(cluster)
+            node_text = f"{english_locations[i]}\n{value_str}"
+            ax.text(x, y, node_text, fontsize=9, ha='center', va='center', weight='bold')
     
     # 범례 요소
     legend_elements = [
@@ -167,12 +196,15 @@ def visualize_clusters(
                            [pos[node_i, 1], pos[node_j, 1]], 
                            '-', color=cluster_color, alpha=0.5, linewidth=1.5)
             
-            # 클러스터별 범례 추가
-            cluster_demand = sum(net_demand[node_idx, items].item() for node_idx in cluster)
+            # 클러스터별 분할된 수요/공급 합계 계산
+            cluster_demand = 0.0
+            for node_idx in cluster:
+                cluster_demand += get_node_demand_for_cluster(node_idx, cluster_idx, items)
+            
             try:
-                label = f'클러스터 {cluster_idx+1} (수요/공급 합계: {cluster_demand:.1f})'
+                label = f'클러스터 {cluster_idx+1} (분할된 수요/공급 합계: {cluster_demand:.1f})'
             except:
-                label = f'Cluster {cluster_idx+1} (Demand/Supply Sum: {cluster_demand:.1f})'
+                label = f'Cluster {cluster_idx+1} (Split Demand/Supply Sum: {cluster_demand:.1f})'
                 
             legend_elements.append(
                 plt.Line2D([0], [0], color=cluster_color, lw=4, label=label)
@@ -183,11 +215,11 @@ def visualize_clusters(
     
     # 제목 및 레이블
     try:
-        title = f'강원도 노드 클러스터링 결과 (품목 {items+1}) - 유효한 클러스터만 표시'
+        title = f'강원도 노드 클러스터링 결과 (품목 {items+1}, 분할된 값 적용) - 유효한 클러스터만 표시'
         xlabel = 'MDS 좌표 X'
         ylabel = 'MDS 좌표 Y'
     except:
-        title = f'Gangwon Province Node Clustering Result (Items {items+1}) - Valid Clusters Only'
+        title = f'Gangwon Province Node Clustering Result (Items {items+1}, Split Values Applied) - Valid Clusters Only'
         xlabel = 'MDS Coordinate X'
         ylabel = 'MDS Coordinate Y'
         
@@ -597,8 +629,6 @@ def print_cluster_report(
                 print(f"{idx+1}. {node_name} (index: {node_idx}, Demand/Supply: [{demand_str}])")
         else:
             print("All nodes are assigned to at least one cluster.")
-    
-    # 중복 노드 분석 등 다른 출력 부분...
 
 # utils.py 파일에 추가할 클러스터별 시각화 함수
 
@@ -608,10 +638,11 @@ def visualize_clusters_by_cluster(
     clusters: List[List[int]],
     net_demand: torch.Tensor,
     analysis: Dict = None,
-    balance_tolerance: float = 0.1
+    balance_tolerance: float = 0.1,
+    split_ratios: Dict[Tuple[int, int], float] = None  # 추가된 매개변수
 ) -> plt.Figure:
     """
-    클러스터링 결과를 클러스터별로 시각화하는 함수
+    클러스터링 결과를 클러스터별로 시각화하는 함수 (분할된 수요/공급 값 사용)
     
     Args:
         locations: 위치 이름 리스트
@@ -620,6 +651,7 @@ def visualize_clusters_by_cluster(
         net_demand: 노드별 수요/공급 데이터
         analysis: analyze_clusters 함수의 분석 결과
         balance_tolerance: 수요/공급 균형 허용 오차
+        split_ratios: 노드별, 클러스터별 분할 비율
         
     Returns:
         plt.Figure: 시각화 결과 그림
@@ -692,19 +724,42 @@ def visualize_clusters_by_cluster(
         if n_rows == 1:
             axes = np.array([axes])
     
+    # 분할된 수요/공급 값을 가져오는 헬퍼 함수
+    def get_split_demand_values(node_idx, cluster_idx):
+        """노드의 분할된 수요/공급 값들을 반환"""
+        if split_ratios and (node_idx, cluster_idx) in split_ratios:
+            ratio = split_ratios[(node_idx, cluster_idx)]
+            return [net_demand[node_idx, t].item() * ratio for t in range(net_demand.shape[1])]
+        else:
+            return [net_demand[node_idx, t].item() for t in range(net_demand.shape[1])]
+    
     # 클러스터별 시각화
     for i, (cluster_idx, cluster) in enumerate(all_clusters):  # 수정: 튜플 언패킹
         row, col = i // n_cols, i % n_cols
         ax = axes[row][col]
         
-        # 클러스터 유효성 검사 추가
+        # 클러스터 유효성 검사 (분할된 값 기준으로 재계산)
         is_valid_size = len(cluster) >= 2  # 최소 노드 수
         is_balanced = True
-        for item_idx in range(net_demand.shape[1]):
-            cluster_net_demand = sum(net_demand[node_idx, item_idx].item() for node_idx in cluster)
-            if abs(cluster_net_demand) > balance_tolerance:
-                is_balanced = False
-                break
+        
+        if split_ratios:
+            # 분할된 값으로 균형 검사
+            for item_idx in range(net_demand.shape[1]):
+                cluster_net_demand = 0.0
+                for node_idx in cluster:
+                    split_values = get_split_demand_values(node_idx, cluster_idx)
+                    cluster_net_demand += split_values[item_idx]
+                if abs(cluster_net_demand) > balance_tolerance:
+                    is_balanced = False
+                    break
+        else:
+            # 원래 값으로 균형 검사
+            for item_idx in range(net_demand.shape[1]):
+                cluster_net_demand = sum(net_demand[node_idx, item_idx].item() for node_idx in cluster)
+                if abs(cluster_net_demand) > balance_tolerance:
+                    is_balanced = False
+                    break
+                    
         is_valid = is_valid_size and is_balanced
         
         # 모든 노드 그리기 (회색, 작게)
@@ -717,13 +772,16 @@ def visualize_clusters_by_cluster(
                 except:
                     ax.text(x, y, english_locations[j], fontsize=8, ha='center', va='center', color='gray')
         
-        # 클러스터에 속한 노드 그리기 (품목별 수요/공급 정보 텍스트로 표시)
+        # 클러스터에 속한 노드 그리기 (분할된 수요/공급 정보로 색상 결정)
         for j in cluster:
             x, y = pos[j, 0], pos[j, 1]
             
-            # 노드의 전체 품목 수요/공급을 고려하여 색상 결정 (수정: .item() 추가)
-            total_demand = sum(1 for t in range(net_demand.shape[1]) if net_demand[j, t].item() < 0)
-            total_supply = sum(1 for t in range(net_demand.shape[1]) if net_demand[j, t].item() > 0)
+            # 분할된 수요/공급 값 가져오기
+            split_values = get_split_demand_values(j, cluster_idx)
+            
+            # 분할된 값을 기준으로 색상 결정
+            total_demand = sum(1 for val in split_values if val < 0)
+            total_supply = sum(1 for val in split_values if val > 0)
             
             if total_demand > total_supply:
                 node_color = 'red'  # 주로 수요 노드
@@ -744,18 +802,18 @@ def visualize_clusters_by_cluster(
             except:
                 ax.text(x, y, english_locations[j], fontsize=12, ha='center', va='center', weight='bold')
             
-            # 품목별 수요/공급 정보 표시
+            # 분할된 품목별 수요/공급 정보 표시
             demand_info = []
-            for t in range(net_demand.shape[1]):
-                value = net_demand[j, t].item()
+            for t in range(len(split_values)):
+                value = split_values[t]
                 if value < 0:
-                    demand_info.append(f"품목{t+1}: 수요 {abs(value):.1f}")
+                    demand_info.append(f"품목{t+1}: 수요 {abs(value):.2f}")
                 elif value > 0:
-                    demand_info.append(f"품목{t+1}: 공급 {value:.1f}")
+                    demand_info.append(f"품목{t+1}: 공급 {value:.2f}")
                 else:
                     demand_info.append(f"품목{t+1}: 중립")
             
-            # 노드 아래에 수요/공급 정보 텍스트 표시
+            # 노드 아래에 분할된 수요/공급 정보 텍스트 표시
             info_text = "\n".join(demand_info)
             ax.text(x, y - 0.1, info_text, fontsize=8, ha='center', va='top', 
                     bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.5'))
@@ -772,11 +830,14 @@ def visualize_clusters_by_cluster(
                       [pos[node_j, 1], pos[node_k, 1]], 
                       line_style, color=line_color, alpha=line_alpha, linewidth=2)
         
-        # 클러스터 균형 정보
+        # 클러스터 균형 정보 (분할된 값 기준)
         balance_info = []
         for t in range(net_demand.shape[1]):
-            cluster_demand = sum(net_demand[node_idx, t].item() for node_idx in cluster)
-            balance_info.append(f"품목{t+1} 균형: {cluster_demand:.1f}")
+            cluster_demand = 0.0
+            for node_idx in cluster:
+                split_values = get_split_demand_values(node_idx, cluster_idx)
+                cluster_demand += split_values[t]
+            balance_info.append(f"품목{t+1} 균형: {cluster_demand:.2f}")
         
         balance_text = "\n".join(balance_info)
         ax.text(0.02, 0.02, balance_text, fontsize=12, ha='left', va='bottom', 
@@ -784,7 +845,7 @@ def visualize_clusters_by_cluster(
         
         # 클러스터 제목 (유효성 표시 포함)
         status = "유효" if is_valid else "유효하지 않음"
-        ax.set_title(f'클러스터 {cluster_idx+1} ({len(cluster)}개 노드) [{status}]', fontsize=14)
+        ax.set_title(f'클러스터 {cluster_idx+1} ({len(cluster)}개 노드) [{status}] - 분할된 값 적용', fontsize=14)
         
         # 축 제거
         ax.set_xticks([])
@@ -796,6 +857,6 @@ def visualize_clusters_by_cluster(
         row, col = i // n_cols, i % n_cols
         fig.delaxes(axes[row][col])
     
-    plt.suptitle('노드 클러스터링 결과 - 모든 클러스터 시각화', fontsize=16)
+    plt.suptitle('노드 클러스터링 결과 - 모든 클러스터 시각화 (분할된 값 적용)', fontsize=16)
     plt.tight_layout(rect=[0, 0, 1, 0.96])  # suptitle을 위한 공간 확보
     return fig
