@@ -5,6 +5,8 @@ from typing import List, Dict, Tuple
 import networkx as nx
 import matplotlib as mpl
 
+# import 용 코드
+
 # 한글 폰트 설정
 def set_korean_font():
     # 기본 폰트로 나눔고딕 설정 시도 (설치된 경우)
