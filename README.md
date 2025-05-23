@@ -31,4 +31,5 @@
 
    * 텍스트 출력 결과
 
-  ![image](https://github.com/user-attachments/assets/2ade8c3b-f011-40b4-b6b0-f305e30875ad)![image](https://github.com/user-attachments/assets/d7e63393-97a2-448c-bbab-54393671788d)
+     ![image](https://github.com/user-attachments/assets/2ade8c3b-f011-40b4-b6b0-f305e30875ad)
+     ![image](https://github.com/user-attachments/assets/d7e63393-97a2-448c-bbab-54393671788d)
