@@ -23,3 +23,15 @@
 
      ![terminal result 3-1](https://github.com/user-attachments/assets/bdc7271f-7284-46f2-bf66-ffc534529069)
      ![terminal result 3-2](https://github.com/user-attachments/assets/7bffa6f7-e58a-48d8-943a-85313f56eace)
+
+
+# 25.05.21 (수)
+1. 수요, 공급 샘플 데이터 수정
+2. 정수 계획법을 사용해 각 클러스터의 수요, 공급 합이 0이 되도록 구현 성공
+3. 유전 알고리즘 소요 시간 : 10 ~ 20분 vs. 정수 계획법 소요 시간 : 0.1초 내외
+
+   * 텍스트 출력 결과
+
+   ![image](https://github.com/user-attachments/assets/14c5c4f1-7bf7-458a-8072-29291b6cf931)![image](https://github.com/user-attachments/assets/a60cddce-5e96-44e6-a14a-d7a52b711ad9)![image](https://github.com/user-attachments/assets/e65dc444-98c8-4b6a-8548-e43889dca966)
+
+
