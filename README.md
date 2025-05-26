@@ -27,7 +27,11 @@
 
      ![terminal result 3-1](https://github.com/user-attachments/assets/bdc7271f-7284-46f2-bf66-ffc534529069)
 
+   * 알고리즘 개선점
+     1. 각 클러스터별 fixed_net_demand의 열 합이 정확히 0이 되지 않음. (근사치로 구해짐)
+     2. 시간이 오래 걸림
 
+        
 # 25.05.23 (금)
 1. 수요, 공급 샘플 데이터 수정
 2. 정수 계획법을 사용해 각 클러스터의 수요, 공급 합이 0이 되도록 구현 성공
@@ -37,3 +41,6 @@
 
      ![image](https://github.com/user-attachments/assets/2ade8c3b-f011-40b4-b6b0-f305e30875ad)
      ![image](https://github.com/user-attachments/assets/d7e63393-97a2-448c-bbab-54393671788d)
+
+   * 알고리즘 개선점
+     1. fixed_net_demand의 값이 커지면(세자리 이상) 해를 구하지 못함.
