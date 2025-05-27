@@ -9,7 +9,7 @@
 * Integer-programming : 정수 계획법으로 완벽한 수요, 공급 균형 달성 후 클러스터 별 총 이동거리 최소화 해를 선택
 
 # ✅ 작업 사항
-# 25.05.12 (월)
+# 25.05.12 (월) - K-medoids
 1. K-Medoids를 사용한 클러스터링 후 수요, 공급에 맞게 노드 재배치
 
    (Clustering fucntion 파일을 import 하여 K-meodoids 파일 실행)
@@ -17,7 +17,7 @@
    ![image](https://github.com/user-attachments/assets/3c96abbc-89c6-4592-9c8d-2cef288fbe1b)
 
 
-# 25.05.21 (수)
+# 25.05.21 (수) - Genetic
 1. 유전 알고리즘을 사용해 거리와 수요, 공급 균형을 3:7 비율로 중요도를 부여해 클러스터링
 2. 노드를 분할하여 중복 노드 허용 클러스터링 구현
 
@@ -32,7 +32,7 @@
      2. 시간이 오래 걸림
 
         
-# 25.05.23 (금)
+# 25.05.23 (금) - Integer_programming
 1. 수요, 공급 샘플 데이터 수정
 2. 정수 계획법을 사용해 각 클러스터의 수요, 공급 합이 0이 되도록 구현 성공
 3. 유전 알고리즘 소요 시간 : 10 ~ 20분 vs. 정수 계획법 소요 시간 : 0.1초 내외
@@ -44,3 +44,16 @@
 
    * 알고리즘 문제점
      1. fixed_net_demand의 값이 커지면(세자리 이상) 해를 구하지 못함.
+
+
+# 25.05.27 (화) - Gurobi_Clustering.py
+1. Gurobipy 패키지를 사용해 클러스터링 구현
+2. 수요, 공급량 스케일에 관계없이 잘 작동함.
+3. 패키지 개발사 웹사이트 링크 : https://www.gurobi.com/
+
+   * 결과 출력 예시
+
+     ![image](https://github.com/user-attachments/assets/11590e7e-ce55-400c-ab4a-6d1191bac95c)
+     ![image](https://github.com/user-attachments/assets/405866f1-5b69-4b5a-a565-d74e05875fb5)
+
+   * 해당 알고리즘은 바로 사용 가능
