@@ -6,6 +6,7 @@ import numpy as np
 # 파라미터 조정
 num_clusters = 4 # 클러스터 개수
 max_solutions = 10 # 구할 솔루션의 최대 개수
+solution_ratio = 0.1 # 다수 해를 구할 때 최적 솔루션 목적함수 값과의 차이 허용치 (0.1 = 10% 이내로 차이나는 솔루션만 저장)
 
 '''
             *** 거리 메트릭 설명 ***
@@ -199,7 +200,7 @@ def solve_divisible_balanced_clustering_gurobi(demand_data, num_clusters=4):
 
     model.setParam(GRB.Param.PoolSearchMode, 2)  # 2: 모든 해를 적극적으로 탐색
     model.setParam(GRB.Param.PoolSolutions, max_solutions)  # 최대 10개의 해를 저장
-    model.setParam(GRB.Param.PoolGap, 0.1) # 최적해 대비 10% 차이 나는 솔루션만 저장
+    model.setParam(GRB.Param.PoolGap, solution_ratio) # 최적해 대비 10% 차이 나는 솔루션만 저장
     
     model.optimize()
     
