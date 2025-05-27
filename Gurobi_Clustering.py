@@ -8,19 +8,17 @@ num_clusters = 4 # 클러스터 개수
 max_solutions = 10 # 구할 솔루션의 최대 개수
 
 '''
-                *** 거리 메트릭 설명 ***
+            *** 거리 메트릭 설명 ***
 
-용어                                의미 요약
-
-TPC (Total Pairwise Cost)	       전체 노드 쌍 거리 총합
-MFC (Mean Facility Cost)	       클러스터 중심(시설)까지의 평균 거리
-APC (Average Pairwise Cost)	       모든 노드쌍 거리의 평균
-MPC (Maximum Pairwise Cost)	       가장 먼 두 노드 사이 거리 (지름)
-중심점 거리	                         중심점(centroid)에서 모든 노드까지의 평균 거리
-지름 (Diameter)	                    네트워크에서 가장 먼 두 노드 간 거리
-반지름 (Radius)	                    중심점에서 가장 먼 노드까지의 거리
-실루엣 점수	                         클러스터 품질: 음수 → 군집 경계가 불분명
-중심점 노드	                         가장 중앙에 있는 노드 (centroid node)
+TPC (Total Pairwise Cost) : 전체 노드 쌍 거리 총합
+MFC (Mean Facility Cost) : 클러스터 중심(시설)까지의 평균 거리
+APC (Average Pairwise Cost) : 모든 노드쌍 거리의 평균
+MPC (Maximum Pairwise Cost) : 가장 먼 두 노드 사이 거리 (지름)
+중심점 거리 : 중심점(centroid)에서 모든 노드까지의 평균 거리
+지름 (Diameter) : 네트워크에서 가장 먼 두 노드 간 거리
+반지름 (Radius) : 중심점에서 가장 먼 노드까지의 거리
+실루엣 점수 : 클러스터 품질: 음수 → 군집 경계가 불분명
+중심점 노드 : 가장 중앙에 있는 노드 (centroid node)
 '''
 
 
