@@ -2,6 +2,12 @@ import torch
 import gurobipy as gp
 from gurobipy import GRB
 import numpy as np
+import matplotlib.pyplot as plt
+import networkx as nx
+import random
+import geopandas as gpd
+import pandas as pd
+from shapely.geometry import Point
 
 # 군집 내 거리 비슷하게
 # 최대 적재량 설정 (한 노드의 공급량, 수요량 제한(수요량 제한은 더 생각해보기))
@@ -12,7 +18,8 @@ import numpy as np
 num_clusters = 4 # 클러스터 개수
 max_solutions = 10 # 구할 솔루션의 최대 개수
 solution_ratio = 0.1 # 다수 해를 구할 때 최적 솔루션 목적함수 값과의 차이 허용치 (0.1 = 10% 이내로 차이나는 솔루션만 저장)
-limit = 100 # 적재 한도
+limit = 65 # 적재 한도 (수요량, 공급량 제한 / 수요량 분할 범위 : -limit ~ 0 / 공급량 분할 범위 : 0 ~ limit)
+            # 주의사항 : 모든 노드의 공급량이 num_clusters * limit 이하, 수요량이 -(num_clusters * limit) 이상이어야 함.
 
 '''
             *** 거리 메트릭 설명 ***
@@ -97,14 +104,9 @@ def solve_divisible_balanced_clustering_gurobi(demand_data, dist_matrix, num_clu
 
     model = gp.Model("divisible_balanced_clustering_v3")
     model.setParam('OutputFlag', 1)
-    model.setParam('TimeLimit', 30000)
-    model.setParam('MIPGap', 1e-6)
+    model.setParam('TimeLimit', 300)
+    model.setParam('MIPGap', solution_ratio)
 
-    # 아래 3줄 추가
-    model.setParam('PoolSearchMode', 2)
-    model.setParam('PoolSolutions', 10)
-    model.setParam('PoolGap', 0.0)
-    
     # split[i,j,k]: 노드 i의 품목 j가 클러스터 k에 기여하는 양
     split, abs_split = {}, {}
     for i in range(n_nodes):
@@ -135,17 +137,11 @@ def solve_divisible_balanced_clustering_gurobi(demand_data, dist_matrix, num_clu
         for j in range(n_items):
             model.addConstr(gp.quicksum(split[i, j, k] for i in range(n_nodes)) == 0, name=f"cluster_balance_{k}_{j}")
 
-    # 제약 3: 클러스터가 비어있지 않도록
+    # 제약 3: 클러스터가 비어있지 않도록 (한 클러스터 당 노드가 최소 한 개 이상)
     for k in range(num_clusters):
         model.addConstr(gp.quicksum(abs_split[i, j, k] for i in range(n_nodes) for j in range(n_items)) >= 1, name=f"nonempty_{k}")
 
-    # 중심 노드 선택 변수
-    center = {}
-    for k in range(num_clusters):
-        for i in range(n_nodes):
-            center[k, i] = model.addVar(vtype=GRB.BINARY, name=f"center_{k}_{i}")
-        model.addConstr(gp.quicksum(center[k, i] for i in range(n_nodes)) == 1, name=f"center_unique_{k}")
-
+    # 거리 제약 조건 : 클러스터 기여량(한 클러스터 내 수요, 공급량이 할당량)이 높을 수록 중심에 배치되도록 설정
     # 노드별 클러스터 기여량
     contribution = {}
     for i in range(n_nodes):
@@ -153,13 +149,19 @@ def solve_divisible_balanced_clustering_gurobi(demand_data, dist_matrix, num_clu
             contribution[i, k] = model.addVar(vtype=GRB.CONTINUOUS, lb=0, name=f"contribution_{i}_{k}")
             model.addConstr(contribution[i, k] == gp.quicksum(abs_split[i, j, k] for j in range(n_items)), name=f"contrib_sum_{i}_{k}")
 
-    # 거리 비용 항
-    distance_cost = gp.quicksum(
-        dist_np[i][c] * contribution[i, k] * center[k, c]
-        for k in range(num_clusters)
-        for i in range(n_nodes)
-        for c in range(n_nodes)
-    )
+    # 쌍거리 기반 TPC 항 추가
+    pairwise_terms = []
+    for k in range(num_clusters):
+        for i in range(n_nodes):
+            for j in range(i + 1, n_nodes):
+                # i와 j가 모두 클러스터 k에 기여한 경우만 거리 계산
+                pairwise_terms.append(
+                    dist_np[i][j] *
+                    contribution[i, k] *
+                    contribution[j, k]
+                )
+    distance_cost = gp.quicksum(pairwise_terms)
+
 
     # 분할 복잡도 항
     # total_splits = gp.quicksum(abs_split[i, j, k] for i in range(n_nodes) for j in range(n_items) for k in range(num_clusters))
@@ -172,6 +174,12 @@ def solve_divisible_balanced_clustering_gurobi(demand_data, dist_matrix, num_clu
     model.setParam(GRB.Param.PoolSolutions, max_solutions)
     model.setParam(GRB.Param.PoolGap, solution_ratio)
     model.optimize()
+
+    if model.status == gp.GRB.INFEASIBLE:
+        print("모델 infeasible! IIS 계산 중...")
+        model.computeIIS()
+        model.write("model.ilp")         # 전체 모델 + IIS 정보 포함
+        model.write("model_iis.ilp")     # 또는 IIS 추적용으로 따로 저장
 
     all_solutions = []
     for sol_idx in range(model.SolCount):
@@ -210,6 +218,7 @@ def solve_divisible_balanced_clustering_gurobi(demand_data, dist_matrix, num_clu
                         allocation[i][j][k] = int(round(val))
                         cluster_contributions[k][j] += allocation[i][j][k]
 
+        # 솔루션 별 클러스터 거리 비교 (단순 비교 용, 목적함수에 포함 X)
         # 클러스터별 TPC 계산 (거리기반)
         cluster_TPCs = []
         for k in range(num_clusters):
@@ -445,6 +454,132 @@ def print_all_distance_metrics(allocation, dist_matrix, num_clusters=4):
     print(f"  최대 지름: {max_diameter:.2f}")
     print(f"  평균 실루엣: {avg_silhouette:.3f}")
 
+# def visualize_clusters_graph(allocation, center_nodes, dist_matrix, num_clusters=4):
+#     """
+#     클러스터 결과를 네트워크 그래프로 시각화하는 함수
+#     """
+#     G = nx.Graph()
+#     pos = {}  # 노드 좌표
+
+#     # 노드 생성
+#     for i in range(len(dist_matrix)):
+#         G.add_node(i)
+    
+#     # 거리 기반 layout
+#     spring_layout_pos = nx.spring_layout(G, weight=None, seed=42)
+#     for i in range(len(dist_matrix)):
+#         pos[i] = spring_layout_pos[i]
+    
+#     # 노드별 소속 클러스터 추출
+#     node_clusters = {i: set() for i in range(len(dist_matrix))}
+#     for i in allocation:
+#         for j in allocation[i]:
+#             for k in allocation[i][j]:
+#                 if abs(allocation[i][j][k]) > 0:
+#                     node_clusters[i].add(k)
+
+#     # 색상 팔레트
+#     color_map = plt.cm.get_cmap('tab10', num_clusters)
+    
+#     # 노드 시각화
+#     for k in range(num_clusters):
+#         nodes_k = [i for i in range(len(dist_matrix)) if k in node_clusters[i]]
+#         nx.draw_networkx_nodes(G, pos,
+#                                nodelist=nodes_k,
+#                                node_color=[color_map(k)] * len(nodes_k),
+#                                label=f'Cluster {k+1}',
+#                                node_size=400,
+#                                edgecolors='black')
+    
+#     # 중심 노드 강조
+#     for k, center_node in center_nodes.items():
+#         if center_node in G.nodes:
+#             nx.draw_networkx_nodes(G, pos,
+#                                    nodelist=[center_node],
+#                                    node_color='white',
+#                                    edgecolors='red',
+#                                    node_size=800,
+#                                    linewidths=2)
+
+#     # 라벨 추가
+#     nx.draw_networkx_labels(G, pos, font_size=10, font_color='black')
+
+#     # 거리 기반 edge (optionally show only short links)
+#     for i in range(len(dist_matrix)):
+#         for j in range(i+1, len(dist_matrix)):
+#             if dist_matrix[i][j] < 80:  # 가까운 노드만 연결
+#                 G.add_edge(i, j, weight=1.0)
+#     nx.draw_networkx_edges(G, pos, alpha=0.2)
+
+#     plt.title("Node Split Result")
+#     plt.axis('off')
+#     plt.legend()
+#     plt.show()
+
+def plot_cluster_on_map(allocation, num_clusters=num_clusters):
+    # 도시 이름과 좌표
+    city_names = [
+        "Chuncheon", "Wonju", "Gangneung", "Donghae", "Taebaek", "Sokcho", "Samcheok", "Hongcheon", "Hoengseong",
+        "Yeongwol", "Pyeongchang", "Jeongseon", "Cheorwon", "Hwacheon", "Yanggu", "Inje", "Goseong", "Yangyang"
+    ]
+
+    city_coords = {
+        "Chuncheon": (37.8813, 127.7298), "Wonju": (37.3422, 127.9207), "Gangneung": (37.7519, 128.8761),
+        "Donghae": (37.5244, 129.1145), "Taebaek": (37.1641, 128.9852), "Sokcho": (38.2044, 128.5912),
+        "Samcheok": (37.4456, 129.1652), "Hongcheon": (37.6968, 127.8881), "Hoengseong": (37.4877, 127.9843),
+        "Yeongwol": (37.1833, 128.4655), "Pyeongchang": (37.3705, 128.3891), "Jeongseon": (37.3793, 128.6602),
+        "Cheorwon": (38.1464, 127.3137), "Hwacheon": (38.1066, 127.7062), "Yanggu": (38.1054, 127.9892),
+        "Inje": (38.0676, 128.1676), "Goseong": (38.3796, 128.4672), "Yangyang": (38.0760, 128.6285)
+    }
+
+    # 노드별 클러스터 정보
+    node_clusters = {i: set() for i in range(len(city_names))}
+    for i in allocation:
+        for j in allocation[i]:
+            for k in allocation[i][j]:
+                if abs(allocation[i][j][k]) > 0:
+                    node_clusters[i].add(k)
+
+    # GeoDataFrame 생성
+    records = []
+    for i, name in enumerate(city_names):
+        lat, lon = city_coords[name]
+        clusters = list(node_clusters[i])
+        for k in clusters:
+            records.append({
+                'city': name,
+                'cluster': k,
+                'geometry': Point(lon, lat)
+            })
+
+    gdf = gpd.GeoDataFrame(records, crs="EPSG:4326")
+
+    # 지도 배경
+    world = gpd.read_file("C:/Users/Admin/Downloads/ne_110m_admin_0_countries/ne_110m_admin_0_countries.shp")
+    korea = world[world["NAME"] == "South Korea"]
+
+    # 시각화
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    axes = axes.flatten()
+
+    for k in range(num_clusters):
+        ax = axes[k]
+        korea.plot(ax=ax, color='lightgrey', edgecolor='black', alpha=0.4)
+
+        gdf_k = gdf[gdf['cluster'] == k]
+        gdf_k.plot(ax=ax, color=plt.cm.tab10(k), markersize=150, edgecolor='black')
+
+        for x, y, label in zip(gdf_k.geometry.x, gdf_k.geometry.y, gdf_k['city']):
+            ax.text(x + 0.01, y, label, fontsize=9)
+
+        ax.set_title(f"Cluster {k + 1}")
+        ax.axis('off')
+
+    plt.suptitle("Node Split Visualization by Cluster", fontsize=16)
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.92)
+    plt.show()
+
 # 메인 실행
 if __name__ == "__main__":
     print("분할 가능한 균형 클러스터링 최적화 시작")
@@ -491,6 +626,8 @@ if __name__ == "__main__":
             cluster_contributions = best_solution['cluster_contributions']
             obj_value = best_solution['obj_value']
             
+            # 시각화 실행
+            # visualize_clusters_graph(allocation, center_nodes, dist_matrix, num_clusters=num_clusters)
             print_detailed_allocation_results(allocation, cluster_contributions, fixed_net_demand)
             
             # 전체 균형 검증
@@ -551,6 +688,9 @@ if __name__ == "__main__":
 
             # 거리 메트릭 분석
             print_all_distance_metrics(allocation, dist_matrix, num_clusters=num_clusters)
+
+            # 결과 시각화
+            plot_cluster_on_map(allocation, num_clusters=num_clusters)
             
         else:
             print("균형이 맞는 솔루션이 없습니다.")
