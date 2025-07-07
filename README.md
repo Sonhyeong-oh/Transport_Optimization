@@ -8,7 +8,7 @@
 * K-medodis : K-medoids 알고리즘으로 1차 클러스터링 후 수요, 공급 균형을 위한 2차 최적화
 * Genetic : 유전 알고리즘으로 수요, 공급 균형과 거리 단축 동시 최적화
 * Integer-programming : 정수 계획법으로 완벽한 수요, 공급 균형 달성 후 클러스터 별 총 이동거리 최소화 해를 선택
-* Gurobi_Clustering : 선형 계획법, 정수 계획법 등을 푸는 알고리즘, 자세한 소스코드는 비공개
+* Gurobi : 선형 계획법, 정수 계획법 등을 푸는 알고리즘, 자세한 소스코드는 비공개
 * RL_transport_optimization : 군집화 후 차량 배차 및 이동 경로 최적화 알고리즘 (강화학습 기반)
 
 
@@ -61,3 +61,14 @@
      ![image](https://github.com/user-attachments/assets/405866f1-5b69-4b5a-a565-d74e05875fb5)
 
    * 해당 알고리즘은 바로 사용 가능
+
+# 25.07.08 (월) - Gurobi_Clustering_fixed, Gurobi_gangwon, Gurobi_chuncheon
+1. Gurobi_Clustering 코드가 클러스터링 시 거리를 고려하도록 수정 → 더 다양한 솔루션 탐색하는 효과
+2. Gurobi_gangwon & chuncheon : Gurobi_Clustering_fixed 기반, GIS shp 파일을 이용한 클러스터링 결과 시각화
+
+   * 결과 출력 예시
+  
+     ![Figure_1](https://github.com/user-attachments/assets/20761158-758f-4975-ab81-baa196ce7e85)
+     ![chuncheon cluster](https://github.com/user-attachments/assets/51cede4c-dfd5-4229-9d33-82e212832e94)
+
+
