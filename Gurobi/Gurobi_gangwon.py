@@ -9,6 +9,7 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
 import matplotlib.font_manager as fm
+import math
 
 # 한글 폰트 설정
 plt.rcParams['font.family'] = 'Malgun Gothic'  # Windows 기본 한글 폰트
@@ -23,7 +24,7 @@ plt.rcParams['axes.unicode_minus'] = False     # 마이너스 기호 깨짐 방�
 num_clusters = 4 # 클러스터 개수
 max_solutions = 10 # 구할 솔루션의 최대 개수
 solution_ratio = 0.1 # 다수 해를 구할 때 최적 솔루션 목적함수 값과의 차이 허용치 (0.1 = 10% 이내로 차이나는 솔루션만 저장)
-limit = 65 # 적재 한도 (수요량, 공급량 제한 / 수요량 분할 범위 : -limit ~ 0 / 공급량 분할 범위 : 0 ~ limit)
+limit =  10_000_000 # 적재 한도 (수요량, 공급량 제한 / 수요량 분할 범위 : -limit ~ 0 / 공급량 분할 범위 : 0 ~ limit)
             # 주의사항 : 모든 노드의 공급량이 num_clusters * limit 이하, 수요량이 -(num_clusters * limit) 이상이어야 함.
 
 '''
@@ -43,87 +44,130 @@ MPC (Maximum Pairwise Cost) : 가장 먼 두 노드 사이 거리 (지름)
 
 # 노드별 수요/공급 데이터
 fixed_net_demand = torch.tensor([
-    [  51,  -37,  -20],
-    [ -80,  -50,   74],
-    [  88,   69,    3],
-    [  -8,  -86,   61],
-    [   2,   74,  -47],
-    [ -26,   89,  -66],
-    [ -86,   66,    5],
-    [  16,  -50,   79],
-    [   3,   89,  -51],
-    [  21,  -80,  -57],
-    [   2,  -28,   33],
-    [   6,  -46,  -97],
-    [  30,   87,   31],
-    [ -55,   34,  -99],
-    [ -29,   30,   45],
-    [  -1,    7,   90],
-    [ -13,   89,   63],
-    [  79, -257,  -47]
+    [-220,  130,   30],
+    [-430,  340,   60],
+    [ -10, -370,  480],
+    [ 390, -430, -440],
+    [  20, -110, -450],
+    [-330, -230,  220],
+    [ 220,  280,  260],
+    [ 290,  490,   40],
+    [-490, -480, -180],
+    [  90,  480,  -50],
+    [ 360, -340,  -30],
+    [ -10,   40,  340],
+    [ 120, -280,  140],
+    [ 400, -240, -390],
+    [-220,  130, -360],
+    [-380,  280,   20],
+    [ 200,  310,  310]
 ], dtype=torch.float32)
 
 # 노드 간 거리 행렬
 dist_matrix = torch.tensor([
-    #춘천 원주  강릉  동해  태백 속초  삼척 홍천  횡성  영월 평창  정선  철원 화천  양구 인제  고성  양양
-    [0,   84,  160, 200, 222, 108, 209, 38,  61,  150, 119, 148, 78,  30,  44,  82,  116, 114], # 춘천
-    [84,  0,   127, 166, 141, 181, 175, 60,  20,  72,  70,  123, 156, 112, 122, 112, 202, 158], # 원주
-    [160, 127, 0,   47,  99,  65,  59,  134, 107, 117, 90,  68,  243, 187, 128, 110, 96,  53 ], # 강릉
-    [200, 166, 47,  0,   54,  104, 14,  173, 146, 114, 129, 76,  282, 227, 168, 150, 136, 89 ], # 동해
-    [222, 141, 99,  54,  0,   164, 47,  189, 159, 64,  84,  52,  287, 249, 216, 198, 185, 142], # 태백
-    [108, 181, 65,  104, 164, 0,   118, 105, 138, 171, 144, 138, 221, 118, 67,  50,  25,  17 ], # 속초
-    [209, 175, 59,  14,  47,  118, 0,   184, 159, 108, 107, 78,  293, 237, 178, 160, 147, 102], # 삼척
-    [38,  60,  134, 173, 189, 105, 184, 0,   34,  124, 87,  116, 123, 65,  64,  54,  109, 90 ], # 홍천
-    [61,  20,  107, 146, 159, 138, 159, 34,  0,   95,  55,  85,  145, 87,  97,  83,  178, 119], # 횡성
-    [150, 72,  117, 114, 64,  171, 108, 124, 95,  0,   29,  52,  224, 187, 197, 186, 199, 151], # 영월
-    [119, 70,  90,  129, 84,  144, 107, 87,  55,  29,  0,   31,  211, 143, 150, 128, 171, 124], # 평창
-    [148, 123, 68,  76,  52,  138, 78,  116, 85,  52,  31,  0,   262, 220, 197, 142, 166, 118], # 정선
-    [78,  156, 243, 282, 287, 221, 293, 123, 145, 224, 211, 262, 0,   61,  119, 149, 192, 211], # 철원
-    [30,  112, 187, 227, 249, 118, 237, 65,  87,  187, 143, 220, 61,  0,   44,  73,  155, 143], # 화천
-    [44,  122, 128, 168, 216, 67,  178, 64,  97,  197, 150, 197, 119, 44,  0,   31,  75,  74 ], # 양구
-    [82,  112, 110, 150, 198, 50,  160, 54,  83,  186, 128, 142, 149, 73,  31,  0,   57,  55 ], # 인제
-    [116, 202, 96,  136, 185, 25,  147, 109, 178, 199, 171, 166, 192, 155, 75,  57,  0,   43 ], # 고성
-    [114, 158, 53,  89,  142, 17,  102, 90,  119, 151, 124, 118, 211, 143, 74,  55,  43,  0  ]  # 양양
-], dtype=torch.float32)
+        [0.00, 1.27, 1.66, 1.41, 1.81, 1.75, 0.60, 0.20, 0.72, 0.70, 1.23, 1.56, 1.12, 1.22, 1.12, 2.02, 1.58],
+        [1.27, 0.00, 0.47, 0.99, 0.65, 0.59, 1.34, 1.07, 1.17, 0.90, 0.68, 2.43, 1.87, 1.28, 1.10, 0.96, 0.53],
+        [1.66, 0.47, 0.00, 0.54, 1.04, 0.14, 1.73, 1.46, 1.14, 1.29, 0.76, 2.82, 2.27, 1.68, 1.50, 1.36, 0.89],
+        [1.41, 0.99, 0.54, 0.00, 1.64, 0.47, 1.89, 1.59, 0.64, 0.84, 0.52, 2.87, 2.49, 2.16, 1.98, 1.85, 1.42],
+        [1.81, 0.65, 1.04, 1.64, 0.00, 1.18, 1.05, 1.38, 1.71, 1.44, 1.38, 2.21, 1.18, 0.67, 0.50, 0.25, 0.17],
+        [1.75, 0.59, 0.14, 0.47, 1.18, 0.00, 1.84, 1.59, 1.08, 1.07, 0.78, 2.93, 2.37, 1.78, 1.60, 1.47, 1.02],
+        [0.60, 1.34, 1.73, 1.89, 1.05, 1.84, 0.00, 0.34, 1.24, 0.87, 1.16, 1.23, 0.65, 0.64, 0.54, 1.09, 0.90],
+        [0.20, 1.07, 1.46, 1.59, 1.38, 1.59, 0.34, 0.00, 0.95, 0.55, 0.85, 1.45, 0.87, 0.97, 0.83, 1.78, 1.19],
+        [0.72, 1.17, 1.14, 0.64, 1.71, 1.08, 1.24, 0.95, 0.00, 0.29, 0.52, 2.24, 1.87, 1.97, 1.86, 1.99, 1.51],
+        [0.70, 0.90, 1.29, 0.84, 1.44, 1.07, 0.87, 0.55, 0.29, 0.00, 0.31, 2.11, 1.43, 1.50, 1.28, 1.71, 1.24],
+        [1.23, 0.68, 0.76, 0.52, 1.38, 0.78, 1.16, 0.85, 0.52, 0.31, 0.00, 2.62, 2.20, 1.97, 1.42, 1.66, 1.18],
+        [1.56, 2.43, 2.82, 2.87, 2.21, 2.93, 1.23, 1.45, 2.24, 2.11, 2.62, 0.00, 0.61, 1.19, 1.49, 1.92, 2.11],
+        [1.12, 1.87, 2.27, 2.49, 1.18, 2.37, 0.65, 0.87, 1.87, 1.43, 2.20, 0.61, 0.00, 0.44, 0.73, 1.55, 1.43],
+        [1.22, 1.28, 1.68, 2.16, 0.67, 1.78, 0.64, 0.97, 1.97, 1.50, 1.97, 1.19, 0.44, 0.00, 0.31, 0.75, 0.74],
+        [1.12, 1.10, 1.50, 1.98, 0.50, 1.60, 0.54, 0.83, 1.86, 1.28, 1.42, 1.49, 0.73, 0.31, 0.00, 0.57, 0.55],
+        [2.02, 0.96, 1.36, 1.85, 0.25, 1.47, 1.09, 1.78, 1.99, 1.71, 1.66, 1.92, 1.55, 0.75, 0.57, 0.00, 0.43],
+        [1.58, 0.53, 0.89, 1.42, 0.17, 1.02, 0.90, 1.19, 1.51, 1.24, 1.18, 2.11, 1.43, 0.74, 0.55, 0.43, 0.00]
+    ], dtype=torch.float32)
 
 
-def solve_divisible_balanced_clustering_gurobi(demand_data, dist_matrix, num_clusters=4, max_solutions=10, solution_ratio=solution_ratio):
+def print_matrix_form(allocation, fixed_net_demand, dist_matrix, num_clusters=4):
     """
-    Gurobi를 사용하여 정수 분할 가능한 균형 클러스터링 문제 해결
-    각 노드는 여러 클러스터에 정수 비율로 분할 가능
-    
-    Parameters:
-    - demand_data: (n_nodes x n_items) torch.Tensor
-    - dist_matrix: (n_nodes x n_nodes) torch.Tensor
-    - num_clusters: 클러스터 수
-    - max_solutions: 최대 저장할 솔루션 수
-    - solution_ratio: 목적함수 차이 허용 비율 (0.1 = 10%)
-    - alpha, beta: 목적함수 내 분할복잡도/거리항 가중치
-    
-    Returns:
-    - all_solutions: [(allocation, cluster_contributions, obj_value), ...]
+    각 클러스터에 대해 다음을 출력:
+    1. 수요/공급 행렬: 차고지 노드 [0,0,0] 항상 맨 위에 출력
+    2. 거리 행렬: 차고지 노드와의 거리 포함 (depot_distances 반영)
     """
+    n_nodes, n_items = fixed_net_demand.shape
+    dist_np = dist_matrix.numpy()
+
+    # 노드 0(춘천)과 나머지 노드 간 거리 (길이 17)
+    depot_distances = [0.84,  0.16, 0.20, 0.22, 0.11, 0.21, 0.38, 0.61, 0.15,
+                       0.12, 0.15, 0.78, 0.30, 0.44, 0.82, 0.12, 0.11]
+
+    print("\n" + "=" * 90)
+    print("클러스터별 할당된 수요/공급 행렬 + 거리 행렬 (차고지 포함)")
+    print("=" * 90)
+
+    for k in range(num_clusters):
+        assigned_nodes = []
+        assigned_matrix = []
+
+        for i in range(n_nodes):
+            if i in allocation:
+                row = [0] * n_items
+                has_value = False
+                for j in range(n_items):
+                    if j in allocation[i] and k in allocation[i][j]:
+                        val = allocation[i][j][k]
+                        row[j] = val
+                        if abs(val) > 0:
+                            has_value = True
+                if has_value:
+                    assigned_nodes.append(i)
+                    assigned_matrix.append(row)
+
+        print(f"\n[클러스터 {k + 1}]")
+        if not assigned_nodes:
+            print("  ▶ 소속 노드 없음 (빈 클러스터)")
+            continue
+
+        # ▶ 수요/공급 행렬: 항상 차고지 먼저
+        print("▶ 할당된 수요/공급 행렬:")
+        print(f"    노드  0: [   0,    0,    0]")  # 차고지
+        for node_idx, row in zip(assigned_nodes, assigned_matrix):
+            print(f"    노드 {node_idx:2d}: [{row[0]:4d}, {row[1]:4d}, {row[2]:4d}]")
+
+        # ▶ 거리 행렬: 노드 0 포함
+        print("\n▶ 거리 행렬:")
+        all_nodes = [0] + assigned_nodes  # 차고지 포함한 노드 순서
+        for i in all_nodes:
+            row_vals = []
+            for j in all_nodes:
+                if i == 0 and j == 0:
+                    row_vals.append("0.00")
+                elif i == 0:
+                    row_vals.append(f"{depot_distances[j-1]:.2f}")
+                elif j == 0:
+                    row_vals.append(f"{depot_distances[i-1]:.2f}")
+                else:
+                    row_vals.append(f"{dist_np[i][j]:.2f}")
+            print(f"    [{', '.join(row_vals)}]")
+
+
+def solve_divisible_balanced_clustering_gurobi(demand_data, dist_matrix, num_clusters=4, max_solutions=10, solution_ratio=0.1):
+
     demand_np = demand_data.numpy()
     dist_np = dist_matrix.numpy()
     n_nodes, n_items = demand_np.shape
 
-    model = gp.Model("divisible_balanced_clustering_v3")
+    model = gp.Model("divisible_balanced_clustering_mfc")
     model.setParam('OutputFlag', 1)
     model.setParam('TimeLimit', 300)
     model.setParam('MIPGap', solution_ratio)
 
-    # split[i,j,k]: 노드 i의 품목 j가 클러스터 k에 기여하는 양
     split, abs_split = {}, {}
     for i in range(n_nodes):
         for j in range(n_items):
             for k in range(num_clusters):
                 if demand_np[i, j] > 0:
-                    # 공급: 0 ~ min(1000, 실제 공급량)
-                    ub = min(limit, int(demand_np[i, j]))
+                    ub = min(10000000, int(demand_np[i, j]))
                     split[i, j, k] = model.addVar(vtype=GRB.INTEGER, lb=0, ub=ub, name=f"split_{i}_{j}_{k}")
                 elif demand_np[i, j] < 0:
-                    # 수요: max(-1000, 실제 수요량) ~ 0
-                    lb = max(-limit, int(demand_np[i, j]))
+                    lb = max(-10000000, int(demand_np[i, j]))
                     split[i, j, k] = model.addVar(vtype=GRB.INTEGER, lb=lb, ub=0, name=f"split_{i}_{j}_{k}")
                 else:
                     split[i, j, k] = model.addVar(vtype=GRB.INTEGER, lb=0, ub=0, name=f"split_{i}_{j}_{k}")
@@ -132,49 +176,60 @@ def solve_divisible_balanced_clustering_gurobi(demand_data, dist_matrix, num_clu
                 model.addConstr(abs_split[i, j, k] >= split[i, j, k])
                 model.addConstr(abs_split[i, j, k] >= -split[i, j, k])
 
-    # 제약 1: split의 합은 원래 값과 같아야 함
     for i in range(n_nodes):
         for j in range(n_items):
-            model.addConstr(gp.quicksum(split[i, j, k] for k in range(num_clusters)) == demand_np[i, j], name=f"split_sum_{i}_{j}")
+            model.addConstr(gp.quicksum(split[i, j, k] for k in range(num_clusters)) == demand_np[i, j])
 
-    # 제약 2: 각 클러스터의 품목별 합은 0
     for k in range(num_clusters):
         for j in range(n_items):
-            model.addConstr(gp.quicksum(split[i, j, k] for i in range(n_nodes)) == 0, name=f"cluster_balance_{k}_{j}")
+            model.addConstr(gp.quicksum(split[i, j, k] for i in range(n_nodes)) == 0)
 
-    # 제약 3: 클러스터가 비어있지 않도록 (한 클러스터 당 노드가 최소 한 개 이상)
-    for k in range(num_clusters):
-        model.addConstr(gp.quicksum(abs_split[i, j, k] for i in range(n_nodes) for j in range(n_items)) >= 1, name=f"nonempty_{k}")
-
-    # 거리 제약 조건 : 클러스터 기여량(한 클러스터 내 수요, 공급량이 할당량)이 높을 수록 중심에 배치되도록 설정
-    # 노드별 클러스터 기여량
-    contribution = {}
+    z = {}
     for i in range(n_nodes):
         for k in range(num_clusters):
-            contribution[i, k] = model.addVar(vtype=GRB.CONTINUOUS, lb=0, name=f"contribution_{i}_{k}")
-            model.addConstr(contribution[i, k] == gp.quicksum(abs_split[i, j, k] for j in range(n_items)), name=f"contrib_sum_{i}_{k}")
+            z[i, k] = model.addVar(vtype=GRB.BINARY, name=f"z_{i}_{k}")
 
-    # 쌍거리 기반 TPC 항 추가
-    pairwise_terms = []
+    for i in range(n_nodes):
+        for j in range(n_items):
+            for k in range(num_clusters):
+                model.addConstr(abs_split[i, j, k] <= 10000000 * z[i, k], name=f"link_split_z_{i}_{j}_{k}")
+
+    # ✅ 클러스터당 최소 2개 노드 포함 제약 추가
     for k in range(num_clusters):
-        for i in range(n_nodes):
-            for j in range(i + 1, n_nodes):
-                # i와 j가 모두 클러스터 k에 기여한 경우만 거리 계산
-                pairwise_terms.append(
-                    dist_np[i][j] *
-                    contribution[i, k] *
-                    contribution[j, k]
-                )
-    distance_cost = gp.quicksum(pairwise_terms)
+        model.addConstr(gp.quicksum(z[i, k] for i in range(n_nodes)) >= 2, name=f"min_two_nodes_cluster_{k}")
 
+    mfc, dev_k = {}, {}
+    for k in range(num_clusters):
+        total_dist_k = model.addVar(vtype=GRB.CONTINUOUS, name=f"total_dist_k_{k}")
+        node_count_k = model.addVar(vtype=GRB.CONTINUOUS, name=f"node_count_k_{k}")
+        mfc[k] = model.addVar(vtype=GRB.CONTINUOUS, name=f"mfc_{k}")
 
-    # 분할 복잡도 항
-    # total_splits = gp.quicksum(abs_split[i, j, k] for i in range(n_nodes) for j in range(n_items) for k in range(num_clusters))
+        pairwise_dist_sum = gp.quicksum(
+            gp.quicksum(dist_np[i][j] * z[i, k] * z[j, k] for j in range(n_nodes))
+            for i in range(n_nodes)
+        )
+        model.addConstr(total_dist_k == pairwise_dist_sum)
+        model.addConstr(node_count_k == gp.quicksum(z[i, k] for i in range(n_nodes)) + 1e-6)
+        model.addConstr(mfc[k] == total_dist_k / node_count_k)
 
-    # 목적함수
-    model.setObjective(distance_cost, GRB.MINIMIZE)
+    avg_mfc = model.addVar(vtype=GRB.CONTINUOUS, name="avg_mfc")
+    model.addConstr(avg_mfc == gp.quicksum(mfc[k] for k in range(num_clusters)) / num_clusters)
 
-    # 최적화
+    for k in range(num_clusters):
+        dev_k[k] = model.addVar(vtype=GRB.CONTINUOUS, name=f"dev_k_{k}")
+        model.addConstr(dev_k[k] >= mfc[k] - avg_mfc)
+        model.addConstr(dev_k[k] >= avg_mfc - mfc[k])
+
+    split_penalty = [abs_split[i, j, k] for i in range(n_nodes) for j in range(n_items) for k in range(num_clusters)]
+
+    alpha = 1.0
+    beta = 0.1
+    model.setObjective(
+        alpha * gp.quicksum(dev_k[k] for k in range(num_clusters)) +
+        beta * gp.quicksum(split_penalty),
+        GRB.MINIMIZE
+    )
+
     model.setParam(GRB.Param.PoolSearchMode, 2)
     model.setParam(GRB.Param.PoolSolutions, max_solutions)
     model.setParam(GRB.Param.PoolGap, solution_ratio)
@@ -183,28 +238,9 @@ def solve_divisible_balanced_clustering_gurobi(demand_data, dist_matrix, num_clu
     if model.status == gp.GRB.INFEASIBLE:
         print("모델 infeasible! IIS 계산 중...")
         model.computeIIS()
-        model.write("model.ilp")         # 전체 모델 + IIS 정보 포함
-        model.write("model_iis.ilp")     # 또는 IIS 추적용으로 따로 저장
+        model.write("model.ilp")
+        model.write("model_iis.ilp")
 
-    all_solutions = []
-    for sol_idx in range(model.SolCount):
-        model.setParam(GRB.Param.SolutionNumber, sol_idx)
-        allocation = {}
-        cluster_contributions = [np.zeros(n_items) for _ in range(num_clusters)]
-
-        for i in range(n_nodes):
-            allocation[i] = {}
-            for j in range(n_items):
-                allocation[i][j] = {}
-                for k in range(num_clusters):
-                    val = split[i, j, k].Xn
-                    if abs(val) > 1e-6:
-                        allocation[i][j][k] = int(round(val))
-                        cluster_contributions[k][j] += allocation[i][j][k]
-
-        all_solutions.append((allocation, cluster_contributions, model.PoolObjVal))
-
-    # 각 솔루션 확인 및 저장
     all_solutions = []
     for sol_idx in range(model.SolCount):
         model.setParam(GRB.Param.SolutionNumber, sol_idx)
@@ -223,46 +259,41 @@ def solve_divisible_balanced_clustering_gurobi(demand_data, dist_matrix, num_clu
                         allocation[i][j][k] = int(round(val))
                         cluster_contributions[k][j] += allocation[i][j][k]
 
-        # 솔루션 별 클러스터 거리 비교 (단순 비교 용, 목적함수에 포함 X)
-        # 클러스터별 TPC 계산 (거리기반)
         cluster_TPCs = []
         for k in range(num_clusters):
-            nodes_in_k = [i for i in range(n_nodes) if contribution[i, k].Xn > 1e-6]
-
+            nodes_in_k = []
+            for i in range(n_nodes):
+                for j in range(n_items):
+                    if j in allocation[i] and k in allocation[i][j]:
+                        if abs(allocation[i][j][k]) > 0:
+                            nodes_in_k.append(i)
+                            break
             tpc = 0.0
             for i in range(len(nodes_in_k)):
                 for j in range(i + 1, len(nodes_in_k)):
                     ni, nj = nodes_in_k[i], nodes_in_k[j]
-                    tpc += dist_np[ni][nj]  # 단순 거리 합
+                    tpc += dist_np[ni][nj]
             cluster_TPCs.append(tpc)
 
-        # 출력
-        print(f"목적함수 값: {model.PoolObjVal:.2f} (총 TPC: 분할 기반)")
-        print("거리 기반 TPC (Pairwise Distance Only):")
-        for k, tpc in enumerate(cluster_TPCs):
-            print(f" - 클러스터 {k}: 거리기반 TPC = {tpc:.2f}")
+        print(f"  목적함수 값: {model.PoolObjVal:.2f} (MFC 편차 + 분할량)")
+        for k in range(num_clusters):
+            print(f"   - 클러스터 {k}: MFC = {mfc[k].X:.2f}, 참조용 TPC = {cluster_TPCs[k]:.2f}")
 
-        # 솔루션 저장
         all_solutions.append((allocation, cluster_contributions, model.PoolObjVal))
 
-    # 결과 처리
     if model.status == GRB.OPTIMAL:
         print(f"\n최적해 발견!")
         return all_solutions
-        
     elif model.status == GRB.INFEASIBLE:
         print("\n문제가 실행 불가능합니다.")
-        model.computeIIS()
-        model.write("infeasible_divisible.ilp")
         return []
-        
     elif model.status == GRB.TIME_LIMIT:
         print("\n시간 제한에 도달했습니다.")
         return []
-        
     else:
         print(f"\n최적화 실패 | 상태: {model.status}")
         return []
+    
 
 def print_detailed_allocation_results(allocation, cluster_contributions, demand_data):
     """할당 결과를 자세히 출력하는 함수"""
@@ -523,18 +554,18 @@ def print_all_distance_metrics(allocation, dist_matrix, num_clusters=4):
 
 def plot_cluster_on_map(allocation, num_clusters):
     city_names = [
-        '춘천시', '원주시', '강릉시', '동해시', '태백시', '속초시', '삼척시',
+        '원주시', '강릉시', '동해시', '태백시', '속초시', '삼척시',
         '홍천군', '횡성군', '영월군', '평창군', '정선군', '철원군',
-        '화천군', '양구군', '인제군', '고성군', '양양군'
+        '화천군', '양구군', '인제군', '고성군', '양양군', '춘천시', 
     ]
 
     city_coords = {
-        "춘천시": (37.8813, 127.7298), "원주시": (37.3422, 127.9207), "강릉시": (37.7519, 128.8761),
+        "원주시": (37.3422, 127.9207), "강릉시": (37.7519, 128.8761),
         "동해시": (37.5244, 129.1145), "태백시": (37.1641, 128.9852), "속초시": (38.2044, 128.5912),
         "삼척시": (37.4456, 129.1652), "홍천군": (37.6968, 127.8881), "횡성군": (37.4877, 127.9843),
         "영월군": (37.1833, 128.4655), "평창군": (37.3705, 128.3891), "정선군": (37.3793, 128.6602),
         "철원군": (38.1464, 127.3137), "화천군": (38.1066, 127.7062), "양구군": (38.1054, 127.9892),
-        "인제군": (38.0676, 128.1676), "고성군": (38.3796, 128.4672), "양양군": (38.0760, 128.6285)
+        "인제군": (38.0676, 128.1676), "고성군": (38.3796, 128.4672), "양양군": (38.0760, 128.6285), "춘천시": (37.8813, 127.7298)
     }
 
     # 노드별 클러스터 정보
@@ -589,6 +620,16 @@ def plot_cluster_on_map(allocation, num_clusters):
 
         # 전체 배경 지도
         gangwon.plot(ax=ax, color='beige', edgecolor='black', alpha=0.3)
+
+        # 1. 춘천시 먼저 하늘색으로 강조
+        chuncheon = gangwon[gangwon['SIG_KOR_NM'] == '춘천시']
+        chuncheon.plot(ax=ax, color='skyblue', edgecolor='black', alpha=0.8)
+
+        # ✅ 춘천시 라벨 따로 출력
+        if not chuncheon.empty:
+            centroid = chuncheon.geometry.centroid.iloc[0]
+            ax.text(centroid.x, centroid.y, "춘천시", fontsize=10, color='blue',
+                    ha='center', va='center', fontweight='bold', bbox=dict(facecolor='white', alpha=0.6, edgecolor='none'))
 
         # 클러스터 k에 포함된 도시들
         cluster_cities = [city for city, clusters in city_to_clusters.items() if k in clusters]
@@ -723,6 +764,9 @@ if __name__ == "__main__":
 
             # 결과 시각화
             plot_cluster_on_map(allocation, num_clusters=num_clusters)
+
+            # 수요/공급 & 거리 행렬 출력
+            print_matrix_form(allocation, fixed_net_demand, dist_matrix, num_clusters=num_clusters)
             
         else:
             print("균형이 맞는 솔루션이 없습니다.")
