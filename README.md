@@ -1,3 +1,5 @@
+<img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=Python&logoColor=white"/>
+
 ## Transportation Optimization using Integer Programming & RL
 
 강화학습 연산량 감소를 위한 사전 클러스터링 코드 구현
@@ -69,3 +71,5 @@
 군집화 후 차량 배차 및 이동 경로 최적화 알고리즘 (강화학습 기반)
 <img width="1838" height="951" alt="image" src="https://github.com/user-attachments/assets/de559bb2-342d-4c68-84b4-7af4aa6712f9" />
 
+# Paper
+게재 예정
