@@ -60,7 +60,19 @@
 
 # Gurobi_Clustering_fixed, Gurobi_gangwon, Gurobi_chuncheon
 1. Gurobi_Clustering 코드가 클러스터링 시 거리를 고려하도록 수정 → 더 다양한 솔루션 탐색하는 효과
-2. Gurobi_ga과
+2. Gurobi_gangwon & chuncheon : Gurobi_Clustering_fixed 기반, GIS shp 파일을 이용한 클러스터링 결과 시각화
+
+<img width="1920" height="983" alt="구역 분할 결과 1" src="https://github.com/user-attachments/assets/74ba3831-7d0a-47f3-82b4-79bec300cb4e" />
+<img width="1800" height="1027" alt="구역 분할 결과 2" src="https://github.com/user-attachments/assets/75983758-3ad8-43d3-a391-cb358fd5d0f0" />
+
+# RL_transport_optimization
+
+1. 모델 흐름도
+
+<img width="1443" height="802" alt="image" src="https://github.com/user-attachments/assets/9374487e-f6bc-4cb0-b74a-d09d996bf94e" />
+
+2. 테스트 결과
+   
 <img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/9608453a-e48b-4619-9815-78c5b263a298" />
 
 
