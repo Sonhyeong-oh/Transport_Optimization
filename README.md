@@ -60,16 +60,9 @@
 
 # Gurobi_Clustering_fixed, Gurobi_gangwon, Gurobi_chuncheon
 1. Gurobi_Clustering 코드가 클러스터링 시 거리를 고려하도록 수정 → 더 다양한 솔루션 탐색하는 효과
-2. Gurobi_gangwon & chuncheon : Gurobi_Clustering_fixed 기반, GIS shp 파일을 이용한 클러스터링 결과 시각화
+2. Gurobi_ga과
+<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/9608453a-e48b-4619-9815-78c5b263a298" />
 
-   * 결과 출력 예시
-  
-     ![Figure_1](https://github.com/user-attachments/assets/20761158-758f-4975-ab81-baa196ce7e85)
-     ![chuncheon cluster](https://github.com/user-attachments/assets/51cede4c-dfd5-4229-9d33-82e212832e94)
-
-# RL_transport_optimization
-군집화 후 차량 배차 및 이동 경로 최적화 알고리즘 (강화학습 기반)
-<img width="1838" height="951" alt="image" src="https://github.com/user-attachments/assets/de559bb2-342d-4c68-84b4-7af4aa6712f9" />
 
 # Paper
 게재 예정
