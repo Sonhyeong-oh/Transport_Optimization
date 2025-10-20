@@ -1,6 +1,4 @@
-# Dohwa-OFORD Transportation Optimization
-
-![도화오포드 로고](https://github.com/user-attachments/assets/dca41e5b-5bb4-4e19-bc52-766451dbccd6)
+# Transportation Optimization with Integer Programming & RL
 
 강화학습 연산량 감소를 위한 사전 클러스터링 코드 구현
 
@@ -59,8 +57,6 @@
 
      ![image](https://github.com/user-attachments/assets/11590e7e-ce55-400c-ab4a-6d1191bac95c)
      ![image](https://github.com/user-attachments/assets/405866f1-5b69-4b5a-a565-d74e05875fb5)
-
-   * 해당 알고리즘은 바로 사용 가능
 
 # 25.07.08 (월) - Gurobi_Clustering_fixed, Gurobi_gangwon, Gurobi_chuncheon
 1. Gurobi_Clustering 코드가 클러스터링 시 거리를 고려하도록 수정 → 더 다양한 솔루션 탐색하는 효과
