@@ -1,4 +1,4 @@
-# Transportation Optimization with Integer Programming & RL
+## Transportation Optimization using Integer Programming & RL
 
 강화학습 연산량 감소를 위한 사전 클러스터링 코드 구현
 
