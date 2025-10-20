@@ -42,7 +42,6 @@
    * 결과 출력 예시
 
      ![image](https://github.com/user-attachments/assets/2ade8c3b-f011-40b4-b6b0-f305e30875ad)
-     ![image](https://github.com/user-attachments/assets/d7e63393-97a2-448c-bbab-54393671788d)
 
    * 알고리즘 문제점
      1. fixed_net_demand의 값이 커지면(세자리 이상) 해를 구하지 못함.
@@ -56,9 +55,8 @@
    * 결과 출력 예시
 
      ![image](https://github.com/user-attachments/assets/11590e7e-ce55-400c-ab4a-6d1191bac95c)
-     ![image](https://github.com/user-attachments/assets/405866f1-5b69-4b5a-a565-d74e05875fb5)
 
-# 25.07.08 (월) - Gurobi_Clustering_fixed, Gurobi_gangwon, Gurobi_chuncheon
+# Gurobi_Clustering_fixed, Gurobi_gangwon, Gurobi_chuncheon
 1. Gurobi_Clustering 코드가 클러스터링 시 거리를 고려하도록 수정 → 더 다양한 솔루션 탐색하는 효과
 2. Gurobi_gangwon & chuncheon : Gurobi_Clustering_fixed 기반, GIS shp 파일을 이용한 클러스터링 결과 시각화
 
@@ -67,4 +65,7 @@
      ![Figure_1](https://github.com/user-attachments/assets/20761158-758f-4975-ab81-baa196ce7e85)
      ![chuncheon cluster](https://github.com/user-attachments/assets/51cede4c-dfd5-4229-9d33-82e212832e94)
 
+# RL_transport_optimization
+군집화 후 차량 배차 및 이동 경로 최적화 알고리즘 (강화학습 기반)
+<img width="1838" height="951" alt="image" src="https://github.com/user-attachments/assets/de559bb2-342d-4c68-84b4-7af4aa6712f9" />
 
