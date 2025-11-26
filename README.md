@@ -50,9 +50,12 @@
 
 
 # Gurobi_Clustering.py
-1. Gurobipy 패키지를 사용해 클러스터링 구현
+1. Gurobipy 패키지(정수계획법 기반)를 사용해 클러스터링 구현
 2. 수요, 공급량 스케일에 관계없이 잘 작동함.
 3. 패키지 개발사 웹사이트 링크 : https://www.gurobi.com/
+   * 정수계획법 설계
+     
+     <img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/272cb83e-8a66-4e58-9654-8b6fa2c7bbbb" />
 
    * 결과 출력 예시
 
