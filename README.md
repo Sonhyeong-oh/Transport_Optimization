@@ -81,4 +81,6 @@
 
 
 # Paper
-게재 예정
+최우성, et al., "군집 알고리즘 및 강화학습을 이용한 수송 계획 최적화", ACK2025 32권 2호
+
+https://kiss.kstudy.com/Detail/Ar?key=4209869
